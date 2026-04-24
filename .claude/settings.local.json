@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"C:\\\\Users\\\\GAMING 3\\\\.gemini\\\\antigravity\\\\scratch\\\\yogisoelastama\" && npx tsc --noEmit 2>&1)"
+    ]
+  }
+}

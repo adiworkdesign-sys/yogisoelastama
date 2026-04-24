@@ -1727,7 +1727,7 @@ backfaceVisibility: 'hidden',
                 }}
                 transition={{
                   height: { ...projectOneLayoutTransition, delay: isGrid ? projectOneGridRevealDelay : 0 },
-                  opacity: { duration: 0.3, delay: isGrid ? projectOneGridRevealDelay : 0 },
+                  opacity: { duration: 0.50, delay: isGrid ? 0.15 : 0 },
                 }}
                 style={{
                   display: 'grid',
@@ -1735,8 +1735,10 @@ backfaceVisibility: 'hidden',
                   width: '100%',
                   gap: '2px',
                   background: '#000',
-                  willChange: 'height, opacity, flex-basis',
+                  willChange: 'height, opacity',
                   overflow: 'hidden',
+                  backfaceVisibility: 'hidden',
+                  transform: 'translateZ(0)',
                 }}
               >
                 <div className="focus-layer" style={{ width: '100%', height: '100%' }}>
@@ -1937,7 +1939,7 @@ backfaceVisibility: 'hidden',
               transition={{
                 flexBasis: { ...projectOneLayoutTransition, delay: isGrid ? projectOneGridRevealDelay : 0 },
                 width: { ...projectOneLayoutTransition, delay: isGrid ? projectOneGridRevealDelay : 0 },
-                opacity: { duration: 0.3, delay: isGrid ? projectOneGridRevealDelay : 0, ease: [0.16, 1, 0.3, 1] },
+                opacity: { duration: 0.42, delay: isGrid ? 0.12 : 0, ease: [0.16, 1, 0.3, 1] },
                 x: { ...projectOnePanelTransition, delay: isGrid ? projectOneGridRevealDelay : 0 },
               }}
               style={{
@@ -1960,7 +1962,7 @@ backfaceVisibility: 'hidden',
                     filter: hoveredMediaPanel ? 'brightness(0.56) saturate(0.82)' : 'brightness(1) saturate(1)',
                   }}
                   transition={{
-                    opacity: { duration: 0.34, delay: isGrid ? projectOneGridSidebarContentDelay : 0, ease: [0.22, 1, 0.36, 1] },
+                    opacity: { duration: 0.46, delay: isGrid ? 0.20 : 0, ease: [0.22, 1, 0.36, 1] },
                     x: { ...projectOnePanelTransition, delay: isGrid ? projectOneGridSidebarContentDelay : 0 },
                     filter: { duration: 0.52, ease: [0.22, 1, 0.36, 1] },
                   }}

@@ -21,8 +21,6 @@ const FONT_OPTIONS = [
   { label: 'Monospace',        value: 'monospace',         gf: null },
 ];
 
-const loadedFonts = new Set<string>(['Inter', 'Oswald', 'monospace']);
-
 function loadFont(gf: string | null) {
   if (!gf) return;
   const id = `gf-${gf}`;

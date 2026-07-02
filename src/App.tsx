@@ -1,4 +1,4 @@
-import React, { startTransition, useEffect, useRef, useState, createContext, useContext, useMemo } from 'react';
+import React, { startTransition, useEffect, useRef, useState, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useSpring, useScroll, useTransform, useMotionValueEvent, type Variants } from 'framer-motion';
 import { ArrowLeft, ArrowRight, X } from 'lucide-react';
@@ -29,21 +29,6 @@ const useIsPhone = () => {
 const netflixLogoSrc = new URL('../Netflix logo.svg', import.meta.url).href;
 const primeLogoSrc = new URL('../Amazon_Prime_Video_logo 1.svg', import.meta.url).href;
 const compactViewportHeight = '100svh';
-
-const categoryMap: Record<string, string> = {
-  'Leviathan RCG': 'Hard Surface Design',
-  'LDR Scream of Tyrannosaurus': 'Hero Prop, Animation Concept and Asset Concept Support',
-  'Secret Level Concord': 'Hero Prop and Asset Concept Support',
-  'Leviathan Caterpillar': 'Hard Surface/Vehicle Design',
-  'Leviathan Icebreaker': 'Hard Surface/Vehicle Design',
-  'Fallen Angel': 'Environment Design, Interior Design, Prop Design.',
-  'Long Exile': 'Hard Surface/Vehicle Design',
-  'MTG Dawn of Phyrexian Invasion': 'Hero Prop, Animation Concept and Asset Concept Support',
-  'MTG March of the Machines': 'Creature Design',
-  'Godkiller': 'Independent Concept'
-};
-
-// Removed logoMap since unused
 
 const imageDecodeCache = new Map<string, Promise<void>>();
 type RouteAnimationMode = 'default' | 'project-one-to-detail' | 'project-one-to-home';
@@ -304,36 +289,6 @@ const ScrambleLink = ({ to, children, onClick }: { to?: string; children: string
   );
 };
 
-const HoverText = ({ text, isHovered, isActivePage }: { text: string, isHovered: boolean, isActivePage: boolean }) => {
-  const chars = useMemo(() => text.split(''), [text]);
-  const randomDelays = useMemo(() => chars.map(() => Math.random() * 0.2), [chars]);
-
-  return (
-    <div style={{ display: 'flex', whiteSpace: 'pre', overflow: 'hidden', padding: '4px 0', background: 'transparent' }}>
-      {chars.map((char, i) => (
-        <div key={i} style={{ position: 'relative', overflow: 'hidden', display: 'inline-block', background: 'transparent' }}>
-          <motion.span
-            initial={false}
-            animate={{ y: isHovered ? '-105%' : '0%' }}
-            transition={{ duration: isHovered ? 0.2 : 0.1, ease: 'easeOut', delay: randomDelays[i] }}
-            style={{ display: 'inline-block', color: isActivePage ? '#ffffff' : '#ffffff', background: 'transparent', backfaceVisibility: 'hidden' }}
-          >
-            {char}
-          </motion.span>
-          <motion.span
-            initial={false}
-            animate={{ y: isHovered ? '0%' : '105%' }}
-            transition={{ duration: isHovered ? 0.2 : 0.1, ease: 'easeOut', delay: randomDelays[i] }}
-            style={{ position: 'absolute', left: 0, top: 0, display: 'inline-block', color: '#ffffff', background: 'transparent', backfaceVisibility: 'hidden' }}
-          >
-            {char}
-          </motion.span>
-        </div>
-      ))}
-    </div>
-  );
-};
-
 const Navbar = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -384,13 +339,11 @@ const mediaReveal = {
   exit: (dir: number) => ({ x: `${dir * -8}%`, scale: 1.04, opacity: 0, filter: 'blur(10px)' }),
 };
 const mediaTransition = {
-  x: { type: 'spring', stiffness: 130, damping: 24, mass: 1 },
-  scale: { type: 'spring', stiffness: 110, damping: 26 },
-  opacity: { duration: 0.55, ease: [0.22, 1, 0.36, 1] },
-  filter: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
+  x: { type: 'spring' as const, stiffness: 130, damping: 24, mass: 1 },
+  scale: { type: 'spring' as const, stiffness: 110, damping: 26 },
+  opacity: { duration: 0.55, ease: [0.22, 1, 0.36, 1] as const },
+  filter: { duration: 0.7, ease: [0.22, 1, 0.36, 1] as const },
 };
-
-const heroRoleWords = ['Cinematic', 'Concept', 'Artist'];
 
 const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -485,7 +438,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
             <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 100%)', pointerEvents: 'none' }} />
 
             {/* Mobile content: flex column — CCA → card → Now Playing → scroll */}
-            <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '72px 20px 100px', gap: '20px', justifyContent: 'center' }}>
+            <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '72px 20px 100px', gap: '20px' }}>
 
               {/* Name + role lockup */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px', width: '100%' }}>
@@ -686,7 +639,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                 className="hero-now-playing-title"
                 style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '22px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.04em', textShadow: '0 2px 10px rgba(0,0,0,1)', color: '#fff', display: 'flex', overflow: 'hidden' }}
               >
-                {displayTitle.split('').map((char, i) => (
+                {displayTitle.split('').map((char: string, i: number) => (
                   <motion.span
                     key={i}
                     variants={{
@@ -1218,7 +1171,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const cursor = useCursor();
 
   if (!project) return null;
-  const role = categoryMap[project.title] || 'Concept Design';
   const baseProjectImages = Array.isArray(project.images) && project.images.length
     ? project.images
     : [project.thumbnail].filter(Boolean);
@@ -1233,7 +1185,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   if (project.title === 'LDR Scream of Tyrannosaurus') displayTitle = 'Love Death + Robots S4: Scream of the Tyrannosaurus';
   if (project.title === 'Secret Level Concord') displayTitle = 'Secret Level S1: Concord';
 
-  const indexStr = String(index).padStart(2, '0');
   const isGrid = titleState === 'hidden' && isFirstProjectToTest;
   const isProjectOneCompactLayout = isFirstProjectToTest && isCompactViewport;
   const isProjectOnePhoneLayout = isFirstProjectToTest && isPhoneViewport;

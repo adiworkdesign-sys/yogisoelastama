@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   motion, AnimatePresence, useScroll, useTransform,
-  useMotionValue, useSpring, useInView,
+  useInView,
 } from 'framer-motion';
 import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
@@ -67,19 +67,6 @@ const CATEGORY: Record<string, string> = {
   '10 - Godkiller': 'Independent Concept',
 };
 
-const YEAR: Record<string, string> = {
-  '01 - Leviathan RCG': '2024',
-  '02 - LDR Scream of Tyrannosaurus': '2024',
-  '03 - Secret Level Concord': '2024',
-  '04 - Leviathan Caterpillar': '2023',
-  '05 - Leviathan Icebreaker': '2023',
-  '06 - Fallen Angel': '2023',
-  '07 - Long Exile': '2022',
-  '08 - MTG Dawn of Phyrexian Invasion': '2023',
-  '09 - MTG March of the Machines': '2022',
-  '10 - Godkiller': '2024',
-};
-
 const projects = ORDER
   .map((id) => projectsData.find((p) => p.id === id))
   .filter(Boolean) as any[];
@@ -131,7 +118,7 @@ const Reveal = ({ children, delay = 0, amount = 0.5 }: { children: React.ReactNo
 
 // ─── top brand bar ────────────────────────────────────────────────────────────
 
-const TopBar = () => (
+export const TopBar = () => (
   <div style={{
     position: 'fixed', top: 0, left: 0, width: '100%', zIndex: 200,
     padding: '24px 32px', display: 'flex', justifyContent: 'space-between',

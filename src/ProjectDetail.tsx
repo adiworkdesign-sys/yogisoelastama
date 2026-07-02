@@ -1,7 +1,7 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowUp } from 'lucide-react';
+import { ArrowLeft, ArrowUp } from 'lucide-react';
 import projectsData from './projects.json';
 
 const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
@@ -59,6 +59,8 @@ const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
   );
 };
 
+const isVideoSrc = (src: string) => src.toLowerCase().endsWith('.mp4') || src.toLowerCase().endsWith('.webm');
+
 const ProjectDetail = () => {
   const { id } = useParams();
   const location = useLocation();
@@ -66,10 +68,30 @@ const ProjectDetail = () => {
   // ─── All hooks must come before any early return ───────────────────────────
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [hoverBtt, setHoverBtt] = useState(false);
+  const [canSlideThumbPrev, setCanSlideThumbPrev] = useState(false);
+  const [canSlideThumbNext, setCanSlideThumbNext] = useState(false);
   const scrollRafRef = useRef<number | null>(null);
+  const gallerySnapRafRef = useRef<number | null>(null);
+  const gallerySnapTimeoutRef = useRef<number | null>(null);
+  const galleryThumbnailRailRef = useRef<HTMLDivElement | null>(null);
 
   const project = projectsData.find((item) => item.id === id);
   const initialImageIndex: number = (location.state as any)?.initialImageIndex ?? 0;
+  const detailImages = project ? [...project.images].reverse() : [];
+  const detailThumbs = project && Array.isArray((project as any).thumbs) && (project as any).thumbs.length === project.images.length
+    ? [...(project as any).thumbs].reverse()
+    : detailImages;
+  const hasDesignGoal = Boolean((project as any)?.designGoal);
+  const designGoalInsertAfter = hasDesignGoal
+    ? Math.min(Math.max(Number((project as any).designGoalInsertAfter ?? 3), 0), detailImages.length)
+    : detailImages.length;
+  const leadImages = hasDesignGoal ? detailImages.slice(0, designGoalInsertAfter) : detailImages;
+  const galleryImages = hasDesignGoal ? detailImages.slice(designGoalInsertAfter) : [];
+  const galleryThumbs = hasDesignGoal ? detailThumbs.slice(designGoalInsertAfter) : [];
+  const initialGalleryIndex = galleryImages.length > 0 && initialImageIndex >= designGoalInsertAfter
+    ? Math.min(initialImageIndex - designGoalInsertAfter, galleryImages.length - 1)
+    : 0;
+  const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(initialGalleryIndex);
 
   // Back-to-top: show after 400 px of scroll
   useEffect(() => {
@@ -77,6 +99,89 @@ const ProjectDetail = () => {
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
+
+  useEffect(() => {
+    setSelectedGalleryIndex(initialGalleryIndex);
+  }, [project?.id, initialGalleryIndex]);
+
+  const updateGalleryThumbSliderState = () => {
+    const rail = galleryThumbnailRailRef.current;
+    if (!rail) {
+      setCanSlideThumbPrev(false);
+      setCanSlideThumbNext(false);
+      return;
+    }
+
+    const maxScroll = Math.max(rail.scrollWidth - rail.clientWidth, 0);
+    setCanSlideThumbPrev(rail.scrollLeft > 2);
+    setCanSlideThumbNext(rail.scrollLeft < maxScroll - 2);
+  };
+
+  const slideGalleryThumbnails = (direction: 'prev' | 'next') => {
+    const rail = galleryThumbnailRailRef.current;
+    if (!rail) return;
+    const distance = Math.max(rail.clientWidth * 0.72, 180);
+    rail.scrollBy({
+      left: direction === 'prev' ? -distance : distance,
+      behavior: 'smooth',
+    });
+  };
+
+  const snapGalleryToViewport = () => {
+    if (gallerySnapRafRef.current != null) {
+      cancelAnimationFrame(gallerySnapRafRef.current);
+    }
+    if (gallerySnapTimeoutRef.current != null) {
+      window.clearTimeout(gallerySnapTimeoutRef.current);
+    }
+
+    gallerySnapRafRef.current = window.requestAnimationFrame(() => {
+      const gallery = document.getElementById('project-detail-selector-gallery');
+      if (!gallery) return;
+
+      const targetTop = Math.max(gallery.getBoundingClientRect().top + window.scrollY, 0);
+      window.scrollTo({ top: targetTop, behavior: 'smooth' });
+
+      gallerySnapTimeoutRef.current = window.setTimeout(() => {
+        const currentGallery = document.getElementById('project-detail-selector-gallery');
+        if (!currentGallery) return;
+
+        const correctionTop = currentGallery.getBoundingClientRect().top + window.scrollY;
+        const delta = Math.abs(currentGallery.getBoundingClientRect().top);
+        if (delta > 2) {
+          window.scrollTo({ top: Math.max(correctionTop, 0), behavior: 'auto' });
+        }
+      }, 420);
+    });
+  };
+
+  const selectGalleryImage = (thumbIndex: number) => {
+    setSelectedGalleryIndex(thumbIndex);
+    snapGalleryToViewport();
+  };
+
+  useEffect(() => {
+    const rail = galleryThumbnailRailRef.current;
+    if (!rail) return;
+
+    const update = () => updateGalleryThumbSliderState();
+    update();
+    rail.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+
+    return () => {
+      rail.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [galleryThumbs.length]);
+
+  useEffect(() => {
+    const rail = galleryThumbnailRailRef.current;
+    if (!rail) return;
+    const activeThumb = rail.querySelector<HTMLElement>('.project-selector-thumbnail.is-selected');
+    activeThumb?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    window.setTimeout(updateGalleryThumbSliderState, 260);
+  }, [selectedGalleryIndex]);
 
   // Scroll to initial image ───────────────────────────────────────────────────
   // Strategy:
@@ -102,8 +207,12 @@ const ProjectDetail = () => {
         return;
       }
 
+      if (idx >= designGoalInsertAfter && galleryImages.length > 0) {
+        setSelectedGalleryIndex(Math.min(idx - designGoalInsertAfter, galleryImages.length - 1));
+      }
+
       const imgs = Array.from(
-        document.querySelectorAll<HTMLImageElement>('.project-gallery img')
+        document.querySelectorAll<HTMLImageElement>('.project-gallery-item > img')
       ).slice(0, idx + 1);
 
       await Promise.all(imgs.map(waitForImage));
@@ -142,14 +251,18 @@ const ProjectDetail = () => {
         cancelled = true;
         window.removeEventListener('detailRouteReady', onReady);
         if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+        if (gallerySnapRafRef.current != null) cancelAnimationFrame(gallerySnapRafRef.current);
+        if (gallerySnapTimeoutRef.current != null) window.clearTimeout(gallerySnapTimeoutRef.current);
       };
     }
 
     return () => {
       cancelled = true;
       if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+      if (gallerySnapRafRef.current != null) cancelAnimationFrame(gallerySnapRafRef.current);
+      if (gallerySnapTimeoutRef.current != null) window.clearTimeout(gallerySnapTimeoutRef.current);
     };
-  }, [initialImageIndex, project?.images]);
+  }, [designGoalInsertAfter, galleryImages.length, initialImageIndex, project?.images]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -198,57 +311,176 @@ const ProjectDetail = () => {
             <video autoPlay muted loop playsInline src={project.detailVideo} className="detail-video" />
           </section>
         )}
-        {/* Gallery Images */}
-        {[...project.images].reverse().map((img, idx) => {
-          const isVideo = img.toLowerCase().endsWith('.mp4') || img.toLowerCase().endsWith('.webm');
+        {leadImages.map((img, idx) => {
+          const isVideo = isVideoSrc(img);
           return (
-            <Fragment key={`${img}-${idx}`}>
-              <motion.section
-                className={`project-gallery-item ${isVideo ? 'project-gallery-item-video' : ''}`}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-100px' }}
-                transition={{ duration: 0.7 }}
+            <motion.section
+              key={`${img}-${idx}`}
+              className={`project-gallery-item ${isVideo ? 'project-gallery-item-video' : ''}`}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-100px' }}
+              transition={{ duration: 0.7 }}
+            >
+              {isVideo ? (
+                <video
+                  id={`detail-img-${idx}`}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  src={img}
+                  className="detail-video"
+                  style={{ width: '100%', display: 'block' }}
+                />
+              ) : (
+                <img
+                  id={`detail-img-${idx}`}
+                  src={img}
+                  alt={`${project.title} image`}
+                  loading={idx <= initialImageIndex ? 'eager' : 'lazy'}
+                />
+              )}
+            </motion.section>
+          );
+        })}
+
+        {(project as any).designGoal && (
+          <motion.section
+            className="project-inline-note"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-100px' }}
+            transition={{ duration: 0.7, delay: 0.05 }}
+          >
+            <div className="project-inline-note-grid">
+              <span className="project-detail-info-label">Design Goal</span>
+              <p className="project-detail-info-value project-inline-note-value">{(project as any).designGoal}</p>
+            </div>
+          </motion.section>
+        )}
+
+        {galleryImages.length > 0 && (
+          <motion.section
+            id="project-detail-selector-gallery"
+            className="project-selector-gallery"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-100px' }}
+            transition={{ duration: 0.7 }}
+          >
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={galleryImages[selectedGalleryIndex]}
+                className={`project-gallery-item project-selector-gallery-main ${isVideoSrc(galleryImages[selectedGalleryIndex]) ? 'project-gallery-item-video' : ''}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               >
-                {isVideo ? (
+                {isVideoSrc(galleryImages[selectedGalleryIndex]) ? (
                   <video
-                    id={`detail-img-${idx}`}
+                    id={`detail-img-${designGoalInsertAfter + selectedGalleryIndex}`}
                     autoPlay
                     muted
                     loop
                     playsInline
-                    src={img}
+                    src={galleryImages[selectedGalleryIndex]}
                     className="detail-video"
                     style={{ width: '100%', display: 'block' }}
                   />
                 ) : (
                   <img
-                    id={`detail-img-${idx}`}
-                    src={img}
-                    alt={`${project.title} image`}
-                    loading={idx <= initialImageIndex ? 'eager' : 'lazy'}
+                    id={`detail-img-${designGoalInsertAfter + selectedGalleryIndex}`}
+                    src={galleryImages[selectedGalleryIndex]}
+                    alt={`${project.title} gallery image ${selectedGalleryIndex + 1}`}
+                    loading="lazy"
                   />
                 )}
-              </motion.section>
+              </motion.div>
+            </AnimatePresence>
 
-              {(project as any).designGoal && idx === (((project as any).designGoalInsertAfter ?? 3) - 1) && (
-                <motion.section
-                  key={`design-goal-${project.id}-${idx}`}
-                  className="project-inline-note"
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true, margin: '-100px' }}
-                  transition={{ duration: 0.7, delay: 0.05 }}
+            <div className="project-selector-thumbnail-wrap">
+              <div className="project-selector-thumbnail-shell">
+                <motion.button
+                  type="button"
+                  className="project-selector-thumbnail-arrow"
+                  onClick={() => slideGalleryThumbnails('prev')}
+                  disabled={!canSlideThumbPrev}
+                  aria-label="Scroll previous gallery thumbnails"
+                  whileHover={canSlideThumbPrev ? { opacity: 1, x: -1 } : undefined}
+                  whileTap={canSlideThumbPrev ? { scale: 0.94, x: -1 } : undefined}
                 >
-                  <div className="project-inline-note-grid">
-                    <span className="project-detail-info-label">Design Goal</span>
-                    <p className="project-detail-info-value project-inline-note-value">{(project as any).designGoal}</p>
-                  </div>
-                </motion.section>
-              )}
-            </Fragment>
-          );
-        })}
+                  <ArrowLeft size={15} strokeWidth={2.2} />
+                </motion.button>
+
+                <div
+                  className="project-selector-thumbnail-rail thumbnail-rail"
+                  ref={galleryThumbnailRailRef}
+                >
+                  {galleryThumbs.map((thumbSrc, thumbIndex) => {
+                    const isSelected = selectedGalleryIndex === thumbIndex;
+                    return (
+                      <motion.button
+                        key={`${thumbSrc}-${thumbIndex}`}
+                        type="button"
+                        className={`project-selector-thumbnail${isSelected ? ' is-selected' : ''}`}
+                        onClick={() => selectGalleryImage(thumbIndex)}
+                        aria-label={`Show gallery image ${thumbIndex + 1}`}
+                        whileHover={{
+                          opacity: 1,
+                          y: -1,
+                          borderColor: 'rgba(255,255,255,0.18)',
+                          boxShadow: '0 12px 24px rgba(0,0,0,0.24)',
+                        }}
+                        whileTap={{ scale: 0.992 }}
+                        animate={{
+                          opacity: isSelected ? 1 : 0.58,
+                          borderColor: isSelected ? 'rgba(255,107,0,0.85)' : 'rgba(255,255,255,0.1)',
+                          boxShadow: isSelected
+                            ? '0 18px 34px rgba(0,0,0,0.34), 0 0 0 1px rgba(255,107,0,0.16)'
+                            : '0 0 0 rgba(0,0,0,0)',
+                          y: isSelected ? -2 : 0,
+                        }}
+                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                      >
+                        {!isVideoSrc(galleryThumbs[thumbIndex]) && (
+                          <motion.img
+                            src={thumbSrc}
+                            alt=""
+                            animate={{
+                              scale: isSelected ? 1.022 : 1,
+                              opacity: 1,
+                            }}
+                            transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
+                            loading="lazy"
+                            decoding="async"
+                            draggable={false}
+                          />
+                        )}
+                        <span className="project-selector-thumbnail-index">
+                          {String(thumbIndex + 1).padStart(2, '0')}
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+
+                <motion.button
+                  type="button"
+                  className="project-selector-thumbnail-arrow project-selector-thumbnail-arrow-next"
+                  onClick={() => slideGalleryThumbnails('next')}
+                  disabled={!canSlideThumbNext}
+                  aria-label="Scroll next gallery thumbnails"
+                  whileHover={canSlideThumbNext ? { opacity: 1, x: 1 } : undefined}
+                  whileTap={canSlideThumbNext ? { scale: 0.94, x: 1 } : undefined}
+                >
+                  <ArrowLeft size={15} strokeWidth={2.2} />
+                </motion.button>
+              </div>
+            </div>
+          </motion.section>
+        )}
 
       </div>
 
@@ -263,26 +495,28 @@ const ProjectDetail = () => {
         >
           <div className="project-footer-grid">
             <div className="project-footer-info">
-              {(project as any).credit && (
-                <div className="footer-info-block">
-                  <span className="project-detail-info-label">Credit</span>
-                  <p className="project-detail-info-value" style={{ whiteSpace: 'pre-line' }}>{(project as any).credit}</p>
-                </div>
-              )}
-              {(project as any).responsibilities && (
-                <div className="footer-info-block">
-                  <span className="project-detail-info-label">Responsibilities</span>
-                  <p className="project-detail-info-value">{(project as any).responsibilities}</p>
-                </div>
-              )}
-              {(project as any).outcome && (
-                <div className="footer-info-block">
-                  <span className="project-detail-info-label">Outcome</span>
-                  <p className="project-detail-info-value project-detail-info-value-wide">{(project as any).outcome}</p>
-                </div>
-              )}
+              <div className="footer-info-row">
+                {(project as any).credit && (
+                  <div className="footer-info-block">
+                    <span className="project-detail-info-label">Credit</span>
+                    <p className="project-detail-info-value" style={{ whiteSpace: 'pre-line' }}>{(project as any).credit}</p>
+                  </div>
+                )}
+                {(project as any).responsibilities && (
+                  <div className="footer-info-block">
+                    <span className="project-detail-info-label">Responsibilities</span>
+                    <p className="project-detail-info-value">{(project as any).responsibilities}</p>
+                  </div>
+                )}
+                {(project as any).outcome && (
+                  <div className="footer-info-block">
+                    <span className="project-detail-info-label">Outcome</span>
+                    <p className="project-detail-info-value project-detail-info-value-wide">{(project as any).outcome}</p>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="project-footer-media" style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
+            <div className="project-footer-media">
               {(project as any).youtubeId && (
                 <YouTubeCard youtubeId={(project as any).youtubeId} />
               )}

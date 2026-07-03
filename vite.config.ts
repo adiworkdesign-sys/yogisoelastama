@@ -2,10 +2,12 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import viteImagemin from 'vite-plugin-imagemin'
 
+const isVercelBuild = process.env.VERCEL === '1'
+
 export default defineConfig({
   plugins: [
     react(),
-    viteImagemin({
+    !isVercelBuild && viteImagemin({
       gifsicle: { optimizationLevel: 7 },
       optipng: { optimizationLevel: 7 },
       mozjpeg: { quality: 82 },
@@ -18,5 +20,5 @@ export default defineConfig({
       },
       webp: { quality: 82 },
     }),
-  ],
+  ].filter(Boolean),
 })

@@ -1,7 +1,7 @@
 import React, { startTransition, useEffect, useRef, useState, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useSpring, useScroll, useTransform, useMotionValueEvent, type Variants } from 'framer-motion';
-import { ArrowLeft, ArrowRight, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Mail, X } from 'lucide-react';
 import projectsData from './projects.json';
 import Lenis from 'lenis';
 import ProjectDetail from './ProjectDetail';
@@ -351,6 +351,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   const [[activeIdx, direction], setState] = useState<[number, number]>([0, 1]);
   const cursor = useCursor();
   const isMobile = useIsMobile();
+  const isPhone = useIsPhone();
+  const isTablet = isMobile && !isPhone;
   const activeProject = featuredProjects[activeIdx];
 
   useEffect(() => {
@@ -411,77 +413,57 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
         {isMobile ? (
           /* ── MOBILE: blurred bg + landscape card ── */
           <>
-            {/* Blurred mirror background */}
             <AnimatePresence>
               <motion.div
-                key={`blur-${currentIndex}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.6 }}
+                key={`mobile-hero-${currentIndex}`}
+                initial={{ opacity: 0, scale: 1.12, filter: 'blur(28px) brightness(0.34) saturate(1.2)' }}
+                animate={{ opacity: 1, scale: 1.08, filter: 'blur(28px) brightness(0.38) saturate(1.22)' }}
+                exit={{ opacity: 0, scale: 1.1, filter: 'blur(30px) brightness(0.32) saturate(1.18)' }}
+                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
                 style={{ position: 'absolute', inset: 0, zIndex: 0 }}
               >
                 {project.video ? (
-                  <video
-                    autoPlay muted loop playsInline src={project.video}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(32px) brightness(0.35) saturate(1.4)', transform: 'scale(1.1)' }}
-                  />
+                  <video autoPlay muted loop playsInline src={project.video} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 ) : (
-                  <img src={project.thumbnail} alt=""
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(32px) brightness(0.35) saturate(1.4)', transform: 'scale(1.1)' }}
-                  />
+                  <img src={project.thumbnail} alt={project.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 )}
               </motion.div>
             </AnimatePresence>
 
-            {/* Dark vignette overlay */}
-            <div style={{ position: 'absolute', inset: 0, zIndex: 1, background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 30%, rgba(0,0,0,0.55) 100%)', pointerEvents: 'none' }} />
+            <div
+              style={{
+                position: 'absolute',
+                inset: 0,
+                zIndex: 1,
+                pointerEvents: 'none',
+                background: [
+                  'linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.10) 36%, rgba(0,0,0,0.72) 100%)',
+                  'radial-gradient(circle at 22% 12%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 22%, rgba(0,0,0,0) 46%)',
+                  'linear-gradient(90deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.12) 48%, rgba(0,0,0,0.20) 100%)'
+                ].join(', ')
+              }}
+            />
 
-            {/* Mobile content: flex column — CCA → card → Now Playing → scroll */}
-            <div style={{ position: 'absolute', inset: 0, zIndex: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '72px 20px 100px', gap: '20px' }}>
-
-              {/* Name + role lockup */}
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0px', width: '100%' }}>
-                <motion.div
-                  initial={{ opacity: 0, y: 10, filter: 'blur(6px)' }}
-                  animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: 10, filter: 'blur(6px)' }}
-                  transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-                  style={{ fontFamily: 'Inter, sans-serif', fontSize: '12px', fontWeight: 600, letterSpacing: '3px', textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)', textShadow: '0 2px 10px rgba(0,0,0,1)' }}
-                >
-                  Yogi Soelastama
-                </motion.div>
-                <motion.div
-                  initial="hidden"
-                  animate={playHeroIntro ? 'visible' : 'hidden'}
-                  variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.022, delayChildren: 0.25 } } }}
-                  style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '22px', fontWeight: 900, letterSpacing: '-0.04em', textShadow: '0 2px 10px rgba(0,0,0,1)', textTransform: 'uppercase', color: '#fff', display: 'flex', justifyContent: 'center', overflow: 'hidden' }}
-                >
-                  {'Cinematic Concept Artist'.split('').map((char, i) => (
-                    <motion.span key={i} variants={{ hidden: { y: '105%', opacity: 0, filter: 'blur(6px)' }, visible: { y: '0%', opacity: 1, filter: 'blur(0px)', transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } } }} style={{ display: 'inline-block', whiteSpace: 'pre' }}>{char}</motion.span>
-                  ))}
-                </motion.div>
-              </div>
-
-              {/* Editorial card — media + metadata overlay */}
-              <motion.div
-                initial={{ opacity: 0, y: 18, scale: 0.97 }}
-                animate={playHeroIntro ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 18, scale: 0.97 }}
-                transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.25 }}
-                style={{ position: 'relative', width: '100%', aspectRatio: '4/5', borderRadius: '14px', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.7)', background: '#000', flexShrink: 0 }}
+            <motion.div
+              initial={{ opacity: 0, y: 18, scale: 0.97, filter: 'blur(8px)' }}
+              animate={playHeroIntro ? { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' } : { opacity: 0, y: 18, scale: 0.97, filter: 'blur(8px)' }}
+              transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
+              style={{ position: 'absolute', top: isTablet ? 'calc(env(safe-area-inset-top, 0px) + 138px)' : 'calc(env(safe-area-inset-top, 0px) + 126px)', left: isTablet ? '48px' : '20px', right: isTablet ? '48px' : '20px', zIndex: 2, display: 'flex', justifyContent: 'center', pointerEvents: 'auto' }}
+            >
+              <Link
+                to={`/project/${project.id}`}
+                state={{ initialImageIndex: 0 }}
+                aria-label={`Open ${project.title}`}
+                style={{ position: 'relative', width: isTablet ? 'min(100%, 860px)' : 'min(100%, calc((100svh - 300px) * 0.8), 390px)', aspectRatio: isTablet ? '16 / 9' : '4 / 5', borderRadius: '16px', overflow: 'hidden', background: '#050505', boxShadow: '0 28px 70px rgba(0,0,0,0.62)', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}
               >
-                {/* Crossfading media */}
-                <AnimatePresence>
+                <AnimatePresence mode="wait">
                   <motion.div
-                    key={`card-${currentIndex}`}
-                    initial={{ opacity: 0, scale: 1.09, filter: 'blur(10px)' }}
+                    key={`mobile-card-${currentIndex}`}
+                    initial={{ opacity: 0, scale: 1.06, filter: 'blur(8px)' }}
                     animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
-                    exit={{ opacity: 0, scale: 1.04, filter: 'blur(7px)' }}
-                    transition={{
-                      opacity: { duration: 0.7, ease: [0.22, 1, 0.36, 1] },
-                      scale: { duration: 1.1, ease: [0.16, 1, 0.3, 1] },
-                      filter: { duration: 0.8, ease: [0.22, 1, 0.36, 1] },
-                    }}
-                    style={{ position: 'absolute', inset: '-4%', transform: 'scale(0.90)', transformOrigin: 'center center' }}
+                    exit={{ opacity: 0, scale: 1.03, filter: 'blur(6px)' }}
+                    transition={{ duration: 0.58, ease: [0.22, 1, 0.36, 1] }}
+                    style={{ position: 'absolute', inset: 0 }}
                   >
                     {project.video ? (
                       <video autoPlay muted loop playsInline src={project.video} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -490,23 +472,19 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                     )}
                   </motion.div>
                 </AnimatePresence>
-
-                {/* Readability scrim */}
-                <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.3) 42%, rgba(0,0,0,0) 70%)', pointerEvents: 'none' }} />
-
-                {/* Metadata overlay — label static, title transitions */}
-                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', textAlign: 'center' }}>
+                <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', background: 'linear-gradient(to top, rgba(0,0,0,0.88) 0%, rgba(0,0,0,0.30) 42%, rgba(0,0,0,0) 70%)', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)' }} />
+                <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, padding: '20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px', textAlign: 'center', pointerEvents: 'none' }}>
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={playHeroIntro ? { opacity: 1 } : { opacity: 0 }}
                     transition={{ duration: 0.6, delay: 0.3 }}
                     style={{ display: 'flex', alignItems: 'center', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 600, color: 'rgba(255,255,255,0.5)' }}
                   >
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '5px' }}><path d="M8 5v14l11-7z"/></svg>Now Playing
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor" style={{ marginRight: '5px' }}><path d="M8 5v14l11-7z" /></svg>Now Playing
                   </motion.div>
                   <AnimatePresence mode="wait">
                     <motion.div
-                      key={displayTitle}
+                      key={`mobile-card-title-${displayTitle}`}
                       initial={{ opacity: 0, y: 8, filter: 'blur(6px)' }}
                       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                       exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
@@ -517,13 +495,53 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                     </motion.div>
                   </AnimatePresence>
                 </div>
+              </Link>
+            </motion.div>
 
-                {/* subtle inner border */}
-                <div style={{ position: 'absolute', inset: 0, borderRadius: '14px', boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.08)', pointerEvents: 'none' }} />
-              </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
+              animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: 12, filter: 'blur(8px)' }}
+              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+              style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 48px)', left: '18px', right: '18px', zIndex: 3, color: '#fff', textAlign: 'center', textShadow: '0 3px 18px rgba(0,0,0,0.78)' }}
+            >
+              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', maxWidth: 'calc(100vw - 56px)' }}>
+                <div style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '19px', fontWeight: 820, lineHeight: 1, letterSpacing: '0px', whiteSpace: 'nowrap' }}>
+                  Yogi Soelastama
+                </div>
+                <div style={{ marginTop: '8px', fontSize: '9px', fontWeight: 800, letterSpacing: '1.45px', lineHeight: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', whiteSpace: 'nowrap' }}>
+                  Cinematic Concept Artist
+                </div>
+              </div>
+            </motion.div>
 
+            <motion.div
+              initial={{ opacity: 0, y: 18, filter: 'blur(8px)' }}
+              animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: 18, filter: 'blur(8px)' }}
+              transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1], delay: 0.18 }}
+              style={{ position: 'absolute', left: '16px', right: '16px', bottom: isTablet ? 'calc(env(safe-area-inset-bottom, 0px) + 52px)' : 'calc(env(safe-area-inset-bottom, 0px) + 108px)', zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '13px' }}
+            >
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 44px)', gap: '12px', alignItems: 'center', justifyContent: 'center', padding: '8px', borderRadius: '999px', background: 'rgba(6,6,8,0.38)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 46px rgba(0,0,0,0.42)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)' }}>
+                <a href="mailto:yogisdesign@gmail.com" aria-label="Email Yogi" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
+                  <Mail size={18} strokeWidth={2.1} />
+                </a>
+                <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" aria-label="Instagram" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none', fontSize: '12px', fontWeight: 900, letterSpacing: '0.4px' }}>
+                  <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+                    <rect x="3" y="3" width="18" height="18" rx="5.2" fill="none" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="17.35" cy="6.65" r="1.35" fill="currentColor" />
+                  </svg>
+                </a>
+                <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
+                  <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', position: 'relative', top: '-3px' }}>
+                    <path fill="currentColor" d="M14.5 8.25h2.25V4.5h-2.9c-3.45 0-5.35 2.05-5.35 5.2v2.55H5.75v4.05H8.5V24h4.35v-7.7h3.18l.52-4.05h-3.7v-2.1c0-1.17.32-1.9 1.65-1.9Z" />
+                  </svg>
+                </a>
+                <span role="img" aria-label="Profile photo" style={{ width: 44, height: 44, borderRadius: '50%', display: 'block', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.24)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.35)' }}>
+                  <img src="/assets/profile-dummy.jpg" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </span>
+              </div>
+            </motion.div>
 
-            </div>
           </>
         ) : (
           /* ── DESKTOP: full-bleed video/image ── */
@@ -560,6 +578,32 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               background: 'linear-gradient(to top, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0.4) 50%, rgba(0,0,0,0) 100%)',
               zIndex: 1, pointerEvents: 'none',
             }} />
+
+            <motion.div
+              initial={{ opacity: 0, y: -10, filter: 'blur(8px)' }}
+              animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: -10, filter: 'blur(8px)' }}
+              transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
+              style={{ position: 'absolute', top: '32px', right: '48px', zIndex: 4, display: 'grid', gridTemplateColumns: 'repeat(4, 34px)', gap: '8px', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '999px', background: 'rgba(6,6,8,0.34)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 46px rgba(0,0,0,0.34)', backdropFilter: 'blur(18px) saturate(1.2)', WebkitBackdropFilter: 'blur(18px) saturate(1.2)' }}
+            >
+              <a href="mailto:yogisdesign@gmail.com" aria-label="Email Yogi" onMouseEnter={() => cursor.set({ mode: 'link' })} onMouseLeave={() => cursor.set({ mode: 'default' })} style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
+                <Mail size={14} strokeWidth={2.1} />
+              </a>
+              <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" aria-label="Instagram" onMouseEnter={() => cursor.set({ mode: 'link' })} onMouseLeave={() => cursor.set({ mode: 'default' })} style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+                  <rect x="3" y="3" width="18" height="18" rx="5.2" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" strokeWidth="2" />
+                  <circle cx="17.35" cy="6.65" r="1.35" fill="currentColor" />
+                </svg>
+              </a>
+              <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook" onMouseEnter={() => cursor.set({ mode: 'link' })} onMouseLeave={() => cursor.set({ mode: 'default' })} style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', position: 'relative', top: '-2px' }}>
+                  <path fill="currentColor" d="M14.5 8.25h2.25V4.5h-2.9c-3.45 0-5.35 2.05-5.35 5.2v2.55H5.75v4.05H8.5V24h4.35v-7.7h3.18l.52-4.05h-3.7v-2.1c0-1.17.32-1.9 1.65-1.9Z" />
+                </svg>
+              </a>
+              <span role="img" aria-label="Profile photo" style={{ width: 34, height: 34, borderRadius: '50%', display: 'block', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.24)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.35)' }}>
+                <img src="/assets/profile-dummy.jpg" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              </span>
+            </motion.div>
           </>
         )}
 
@@ -571,7 +615,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
           onClick={() => window.scrollBy({ top: window.innerHeight, behavior: 'smooth' })}
           style={{
             position: 'absolute', bottom: '32px', left: 0, width: '100%',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            display: isMobile ? 'none' : 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             gap: '8px', zIndex: 3, pointerEvents: 'auto', cursor: 'pointer',
           }}
         >

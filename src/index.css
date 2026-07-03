@@ -122,6 +122,11 @@ button, [role="button"] {
   pointer-events: auto;
 }
 
+.navbar-brand-home {
+  font-size: 14px;
+  font-weight: 700;
+}
+
 /* Heroes */
 .hero-section {
   width: 100%;

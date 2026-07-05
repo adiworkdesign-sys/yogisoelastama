@@ -28,3 +28,11 @@ dist-ssr
 
 .vercel
 .env*.local
+
+# Local deploy/cache artifacts
+.deploy-tmp-*/
+.npm-cache/
+.playwright-mcp/
+.vercel-cli-cache/
+.vercel-cli-data/
+.vercel-cli-home/

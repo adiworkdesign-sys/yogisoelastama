@@ -1063,7 +1063,7 @@ const AboutSection = () => {
 
 const HeroSection = ({ project, index, isLast }: { project: any; index: number; isLast?: boolean }) => {
   const targetRef = useRef<HTMLDivElement>(null);
-  const isFirstProjectToTest = index === 1;
+  const usesProjectGridMechanism = index <= 3;
   const isCompactViewport = useIsMobile();
   const isPhoneViewport = useIsPhone();
 
@@ -1119,7 +1119,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
          observer.unobserve(el);
          isLocked.current = true;
 
-         if (isFirstProjectToTest) {
+         if (usesProjectGridMechanism) {
            setGridMode(1);
            setShowProgressBar(false);
            setTitleState('glitchingOut');
@@ -1153,10 +1153,10 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
        observer.disconnect();
        document.body.style.pointerEvents = 'auto';
     };
-  }, [isFirstProjectToTest, titleState]);
+  }, [usesProjectGridMechanism, titleState]);
 
   useEffect(() => {
-    if (!isFirstProjectToTest || !targetRef.current || titleState === 'visible') return;
+    if (!usesProjectGridMechanism || !targetRef.current || titleState === 'visible') return;
 
     const el = targetRef.current;
     const observer = new IntersectionObserver(([entry]) => {
@@ -1174,7 +1174,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [isFirstProjectToTest, titleState]);
+  }, [usesProjectGridMechanism, titleState]);
 
   // 2. Being Revealed from ABOVE (Glitch IN)
   const lastProgress = useRef(0);
@@ -1188,7 +1188,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       lastProgress.current > 0.05 &&
       isScrollingUp &&
       titleState === 'hidden' &&
-      !isFirstProjectToTest
+      !usesProjectGridMechanism
     ) {
          isLocked.current = true;
          setTitleState('glitchingIn');
@@ -1221,19 +1221,19 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const baseThumbnailSources = Array.isArray(project.thumbs) && project.thumbs.length === baseProjectImages.length
     ? project.thumbs
     : baseProjectImages;
-  const projectImages = isFirstProjectToTest ? [...baseProjectImages].reverse() : baseProjectImages;
-  const thumbnailSources = isFirstProjectToTest ? [...baseThumbnailSources].reverse() : baseThumbnailSources;
+  const projectImages = usesProjectGridMechanism ? [...baseProjectImages].reverse() : baseProjectImages;
+  const thumbnailSources = usesProjectGridMechanism ? [...baseThumbnailSources].reverse() : baseThumbnailSources;
   const totalProjectImages = projectImages.length;
 
   let displayTitle = project.title;
   if (project.title === 'LDR Scream of Tyrannosaurus') displayTitle = 'Love Death + Robots S4: Scream of the Tyrannosaurus';
   if (project.title === 'Secret Level Concord') displayTitle = 'Secret Level S1: Concord';
 
-  const isGrid = titleState === 'hidden' && isFirstProjectToTest;
-  const isProjectOneCompactLayout = isFirstProjectToTest && isCompactViewport;
-  const isProjectOnePhoneLayout = isFirstProjectToTest && isPhoneViewport;
-  const isSidebarOpen = (titleState === 'hidden' || showProgressBar) && isFirstProjectToTest && !isProjectOnePhoneLayout;
-  const detailLinkState = isFirstProjectToTest ? { transitionSource: 'project-one-grid' } : undefined;
+  const isGrid = titleState === 'hidden' && usesProjectGridMechanism;
+  const isProjectOneCompactLayout = usesProjectGridMechanism && isCompactViewport;
+  const isProjectOnePhoneLayout = usesProjectGridMechanism && isPhoneViewport;
+  const isSidebarOpen = (titleState === 'hidden' || showProgressBar) && usesProjectGridMechanism && !isProjectOnePhoneLayout;
+  const detailLinkState = usesProjectGridMechanism ? { transitionSource: 'project-one-grid' } : undefined;
   const projectOneObjectFit = 'cover';
   const projectOneLayoutTransition = {
     type: 'spring' as const,
@@ -1306,7 +1306,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   };
 
   useEffect(() => {
-    if (!isFirstProjectToTest || !project?.images?.length) return;
+    if (!usesProjectGridMechanism || !project?.images?.length) return;
 
     const criticalSources = [
       project.thumbnail,
@@ -1337,7 +1337,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       if (idleCallback != null) window.cancelIdleCallback?.(idleCallback);
       if (timeoutId != null) window.clearTimeout(timeoutId);
     };
-  }, [isFirstProjectToTest, project]);
+  }, [usesProjectGridMechanism, project]);
 
   useEffect(() => {
     if (!isSidebarOpen) {
@@ -1351,7 +1351,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   }, [isSidebarOpen, thumbnailRailDelayMs]);
 
   useEffect(() => {
-    if (!isFirstProjectToTest) return;
+    if (!usesProjectGridMechanism) return;
 
     setIsProjectOneHoverReady(false);
     setHoveredMediaPanel(null);
@@ -1363,7 +1363,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     }, projectOneHoverEnableDelayMs);
 
     return () => window.clearTimeout(timeoutId);
-  }, [isFirstProjectToTest, isGrid, projectOneHoverEnableDelayMs]);
+  }, [usesProjectGridMechanism, isGrid, projectOneHoverEnableDelayMs]);
 
   useEffect(() => {
     if (!showThumbnailRail) return;
@@ -1505,7 +1505,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   ) => {
     const mediaSrc = projectImages[imageIndex] || project.thumbnail;
 
-    if (project.video && imageIndex === 0 && (!isFirstProjectToTest || !isGrid)) {
+    if (project.video && imageIndex === 0 && (!usesProjectGridMechanism || !isGrid)) {
       return (
         <video
           autoPlay
@@ -1871,7 +1871,7 @@ backfaceVisibility: 'hidden',
             }}
           >
             <motion.div
-              className={`hero-image-wrapper${isFirstProjectToTest ? (isProjectOneHoverReady ? ' project-one-hover-ready' : ' project-one-hover-pending') : ''}`}
+              className={`hero-image-wrapper${usesProjectGridMechanism ? (isProjectOneHoverReady ? ' project-one-hover-ready' : ' project-one-hover-pending') : ''}`}
               initial={false}
               animate={{
                 height: '100%',
@@ -1915,7 +1915,7 @@ backfaceVisibility: 'hidden',
                 state={{ ...detailLinkState, initialImageIndex: displayedImageIndex }}
                 onMouseEnter={() => {
                   cursor.set({ mode: 'link' });
-                  if (!isFirstProjectToTest || isProjectOneHoverReady) {
+                  if (!usesProjectGridMechanism || isProjectOneHoverReady) {
                     setHoveredMediaPanel('main');
                   }
                 }}
@@ -1941,7 +1941,7 @@ backfaceVisibility: 'hidden',
                       willChange: 'transform, opacity, filter',
                     }}
                   >
-                    {isFirstProjectToTest
+                    {usesProjectGridMechanism
                       ? renderProjectOneMainMedia(displayedImageIndex)
                       : renderProjectMedia(displayedImageIndex, project.title)}
                   </motion.div>
@@ -1969,7 +1969,7 @@ backfaceVisibility: 'hidden',
             </motion.div>
 
             {/* Bottom Images — Reverted to flex/height animation */}
-            {isFirstProjectToTest && (
+            {usesProjectGridMechanism && (
               <motion.div
                 initial={false}
                 animate={{
@@ -2087,7 +2087,7 @@ backfaceVisibility: 'hidden',
 
 
             {/* Progress bar — fixed so overflow:hidden parents don't clip it */}
-            {isFirstProjectToTest && (
+            {usesProjectGridMechanism && (
               <AnimatePresence>
                 {showProgressBar && (
                   <motion.div
@@ -2112,7 +2112,7 @@ backfaceVisibility: 'hidden',
           </motion.div>
 
           {/* RIGHT SIDEBAR COLUMN */}
-          {isFirstProjectToTest && (
+          {usesProjectGridMechanism && (
             <motion.div
               initial={false}
               animate={{
@@ -2407,7 +2407,7 @@ backfaceVisibility: 'hidden',
                                   style={{
                                     width: '100%',
                                     height: '100%',
-                                    objectFit: isFirstProjectToTest ? 'cover' : 'contain',
+                                    objectFit: usesProjectGridMechanism ? 'cover' : 'contain',
                                     display: 'block',
                                     backgroundColor: '#000',
                                     position: 'relative',
@@ -2651,7 +2651,7 @@ const Home = () => {
 
       <AboutSection />
 
-      {orderedProjects.slice(1, 2).map((project, idx, arr) => {
+      {orderedProjects.slice(1, 4).map((project, idx, arr) => {
         if (!project) return null;
         return (
           <React.Fragment key={project.id}>

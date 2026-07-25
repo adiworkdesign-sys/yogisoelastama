@@ -1,7 +1,7 @@
 import React, { startTransition, useEffect, useRef, useState, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useMotionValue, useSpring, useScroll, useTransform, useMotionValueEvent, type Variants } from 'framer-motion';
-import { ArrowLeft, ArrowRight, Mail, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ExternalLink, Mail, X } from 'lucide-react';
 import projectsData from './projects.json';
 import Lenis from 'lenis';
 import ProjectDetail from './ProjectDetail';
@@ -124,12 +124,25 @@ type CursorState = { mode: CursorMode };
 const CursorContext = createContext<{ set: (s: CursorState) => void }>({ set: () => {} });
 export const useCursor = () => useContext(CursorContext);
 
+const CursorRouteReset = () => {
+  const { pathname } = useLocation();
+  const cursor = useCursor();
+
+  useEffect(() => {
+    cursor.set({ mode: 'default' });
+  }, [cursor.set, pathname]);
+
+  return null;
+};
+
 // Custom Cursor
 const CustomCursor = ({ cursorState }: { cursorState: CursorState }) => {
+  const { pathname } = useLocation();
   const [shouldRenderCursor, setShouldRenderCursor] = useState(() => (
     typeof window !== 'undefined' &&
     window.matchMedia('(hover: hover) and (pointer: fine)').matches
   ));
+  const [isClicking, setIsClicking] = useState(false);
   const cursorX = useMotionValue(-200);
   const cursorY = useMotionValue(-200);
   const springX = useSpring(cursorX, { stiffness: 250, damping: 28, mass: 0.6 });
@@ -150,12 +163,28 @@ const CustomCursor = ({ cursorState }: { cursorState: CursorState }) => {
     return () => window.removeEventListener('mousemove', move);
   }, [shouldRenderCursor]);
 
+  useEffect(() => {
+    if (!shouldRenderCursor) return;
+    const press = () => setIsClicking(true);
+    const release = () => setIsClicking(false);
+    window.addEventListener('mousedown', press);
+    window.addEventListener('mouseup', release);
+    window.addEventListener('blur', release);
+    return () => {
+      window.removeEventListener('mousedown', press);
+      window.removeEventListener('mouseup', release);
+      window.removeEventListener('blur', release);
+    };
+  }, [shouldRenderCursor]);
+
   if (!shouldRenderCursor) return null;
 
-  const { mode } = cursorState;
-  const isGridCursor = mode === 'grid-prev' || mode === 'grid-next';
-  const ringColor = mode === 'link' || isGridCursor ? '#ffffff' : 'rgba(255,255,255,0.75)';
-  const dotSize = isGridCursor ? 0 : (mode === 'default' ? 4 : 14);
+  const mode = pathname === '/' ? cursorState.mode : 'default';
+  const isGridCursor = pathname === '/' && (mode === 'grid-prev' || mode === 'grid-next');
+  const isInteractiveCursor = mode === 'link' || mode === 'nav' || isGridCursor;
+  const ringColor = isInteractiveCursor ? '#ffffff' : 'rgba(255,255,255,0.75)';
+  const ringSize = isGridCursor ? 38 : (isClicking ? 24 : 32);
+  const dotSize = isGridCursor ? 0 : (isClicking ? (isInteractiveCursor ? 20 : 10) : (mode === 'default' ? 4 : 14));
   const dotColor = mode === 'link' ? '#ffffff' : '#ffffff';
 
   return (
@@ -164,11 +193,12 @@ const CustomCursor = ({ cursorState }: { cursorState: CursorState }) => {
       <motion.div
         animate={{
           borderColor: ringColor,
-          width: isGridCursor ? 38 : 32,
-          height: isGridCursor ? 38 : 32,
+          width: ringSize,
+          height: ringSize,
           opacity: isGridCursor ? 0 : 1,
+          scale: isClicking ? 0.92 : 1,
         }}
-        transition={{ duration: 0.2 }}
+        transition={{ type: 'spring', stiffness: 520, damping: 34, mass: 0.5 }}
         style={{
           x: springX, y: springY,
           position: 'fixed', top: 0, left: 0, zIndex: 9999,
@@ -181,7 +211,13 @@ const CustomCursor = ({ cursorState }: { cursorState: CursorState }) => {
       />
       {/* Dot — grows on hover, color by mode */}
       <motion.div
-        animate={{ width: dotSize, height: dotSize, backgroundColor: dotColor, opacity: isGridCursor ? 0 : 1 }}
+        animate={{
+          width: dotSize,
+          height: dotSize,
+          backgroundColor: dotColor,
+          opacity: isGridCursor ? 0 : (isClicking ? 0.92 : 1),
+          scale: isClicking ? 0.82 : 1,
+        }}
         transition={{ type: 'spring', stiffness: 450, damping: 28 }}
         style={{
           x: cursorX, y: cursorY,
@@ -195,9 +231,9 @@ const CustomCursor = ({ cursorState }: { cursorState: CursorState }) => {
         {isGridCursor && (
           <motion.div
             initial={{ opacity: 0, scale: 0.82 }}
-            animate={{ opacity: 1, scale: 1 }}
+            animate={{ opacity: 1, scale: isClicking ? 0.82 : 1 }}
             exit={{ opacity: 0, scale: 0.82 }}
-            transition={{ duration: 0.12 }}
+            transition={{ type: 'spring', stiffness: 520, damping: 32 }}
             style={{
               x: cursorX,
               y: cursorY,
@@ -230,45 +266,67 @@ const CustomCursor = ({ cursorState }: { cursorState: CursorState }) => {
 
 const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ01234!#$%';
 
-const ScrambleLink = ({ to, children, onClick }: { to?: string; children: string; onClick?: () => void }) => {
-  const [displayed, setDisplayed] = useState(children);
-  const [isHovered, setIsHovered] = useState(false);
+const useScrambleText = (text: string, active: boolean, delayMs = 0) => {
+  const [displayed, setDisplayed] = useState(text);
   const frameRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const delayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const iterRef = useRef(0);
+
+  useEffect(() => {
+    if (frameRef.current) clearInterval(frameRef.current);
+    if (delayRef.current) clearTimeout(delayRef.current);
+
+    if (!active) {
+      setDisplayed(text);
+      return;
+    }
+
+    const start = () => {
+      iterRef.current = 0;
+      frameRef.current = setInterval(() => {
+        iterRef.current += 0.5;
+        setDisplayed(
+          text
+            .split('')
+            .map((char, i) => {
+              if (char === ' ') return ' ';
+              if (i < iterRef.current) return text[i];
+              return CHARS[Math.floor(Math.random() * CHARS.length)];
+            })
+            .join('')
+        );
+        if (iterRef.current >= text.length) {
+          clearInterval(frameRef.current!);
+          setDisplayed(text);
+        }
+      }, 30);
+    };
+
+    delayRef.current = setTimeout(start, delayMs);
+
+    return () => {
+      if (frameRef.current) clearInterval(frameRef.current);
+      if (delayRef.current) clearTimeout(delayRef.current);
+    };
+  }, [active, delayMs, text]);
+
+  return displayed;
+};
+
+const ScrambleLink = ({ to, children, onClick }: { to?: string; children: string; onClick?: () => void }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const displayed = useScrambleText(children, isHovered);
   const cursor = useCursor();
 
   const handleMouseEnter = () => {
     setIsHovered(true);
     cursor.set({ mode: 'nav' });
-    iterRef.current = 0;
-    if (frameRef.current) clearInterval(frameRef.current);
-    frameRef.current = setInterval(() => {
-      iterRef.current += 0.5;
-      setDisplayed(
-        children
-          .split('')
-          .map((char, i) => {
-            if (char === ' ') return ' ';
-            if (i < iterRef.current) return children[i];
-            return CHARS[Math.floor(Math.random() * CHARS.length)];
-          })
-          .join('')
-      );
-      if (iterRef.current >= children.length) {
-        clearInterval(frameRef.current!);
-        setDisplayed(children);
-      }
-    }, 30);
   };
 
   const handleMouseLeave = () => {
     setIsHovered(false);
     cursor.set({ mode: 'default' });
-    if (frameRef.current) clearInterval(frameRef.current);
-    setDisplayed(children);
   };
-
-  useEffect(() => () => { if (frameRef.current) clearInterval(frameRef.current); }, []);
 
   const styleArgs = {
     color: isHovered ? '#ffffff' : '#fff',
@@ -286,6 +344,144 @@ const ScrambleLink = ({ to, children, onClick }: { to?: string; children: string
     <span onClick={onClick} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} style={styleArgs}>
       {displayed}
     </span>
+  );
+};
+
+const InstagramGlyph = ({ size }: { size: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
+    <rect x="3" y="3" width="18" height="18" rx="5.2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" strokeWidth="2" />
+    <circle cx="17.35" cy="6.65" r="1.35" fill="currentColor" />
+  </svg>
+);
+
+type SocialIconLinkProps = {
+  href: string;
+  ariaLabel: string;
+  size: number;
+  icon: 'mail' | 'instagram';
+  external?: boolean;
+};
+
+const SocialIconLink = ({ href, ariaLabel, size, icon, external = false }: SocialIconLinkProps) => {
+  const [isHovered, setIsHovered] = useState(false);
+  const cursor = useCursor();
+  const iconSize = icon === 'mail' ? Math.round(size * 0.41) : Math.round(size * 0.44);
+  const isMail = icon === 'mail';
+
+  const activate = () => {
+    setIsHovered(true);
+    cursor.set({ mode: 'link' });
+  };
+
+  const deactivate = () => {
+    setIsHovered(false);
+    cursor.set({ mode: 'default' });
+  };
+
+  return (
+    <motion.a
+      href={href}
+      target={external ? '_blank' : undefined}
+      rel={external ? 'noreferrer' : undefined}
+      aria-label={ariaLabel}
+      onMouseEnter={activate}
+      onMouseLeave={deactivate}
+      onFocus={activate}
+      onBlur={deactivate}
+      initial={false}
+      animate={isHovered ? 'hover' : 'rest'}
+      whileTap={{ scale: 0.94 }}
+      variants={{
+        rest: {
+          y: 0,
+          scale: 1,
+          color: 'rgba(255,255,255,0.9)',
+          backgroundColor: 'rgba(255,255,255,0.045)',
+          borderColor: 'rgba(255,255,255,0.10)',
+          boxShadow: '0 0 0 rgba(255,255,255,0), inset 0 1px 0 rgba(255,255,255,0.08)',
+        },
+        hover: {
+          y: -3,
+          scale: 1.08,
+          color: '#050505',
+          backgroundColor: 'rgba(255,255,255,0.96)',
+          borderColor: 'rgba(255,255,255,0.72)',
+          boxShadow: '0 14px 28px rgba(0,0,0,0.38), 0 0 26px rgba(255,255,255,0.24), inset 0 1px 0 rgba(255,255,255,0.72)',
+        },
+      }}
+      transition={{ type: 'spring', stiffness: 520, damping: 30, mass: 0.62 }}
+      style={{
+        width: size,
+        height: size,
+        borderRadius: '50%',
+        display: 'grid',
+        placeItems: 'center',
+        position: 'relative',
+        overflow: 'hidden',
+        isolation: 'isolate',
+        border: '1px solid rgba(255,255,255,0.10)',
+        textDecoration: 'none',
+        outline: 'none',
+        backgroundImage: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.04))',
+      }}
+    >
+      <motion.span
+        variants={{
+          rest: { opacity: 0, scale: 0.7 },
+          hover: { opacity: 1, scale: 1.18 },
+        }}
+        transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
+        style={{
+          position: 'absolute',
+          inset: 2,
+          borderRadius: '50%',
+          background: 'radial-gradient(circle at 30% 24%, rgba(255,255,255,0.95), rgba(255,255,255,0.28) 38%, rgba(255,255,255,0) 68%)',
+          zIndex: -1,
+        }}
+      />
+      <motion.span
+        variants={{
+          rest: { x: '-140%', opacity: 0.1, rotate: 28 },
+          hover: { x: '140%', opacity: 0.42, rotate: 28 },
+        }}
+        transition={{ duration: 0.48, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          position: 'absolute',
+          top: -size * 0.35,
+          bottom: -size * 0.35,
+          width: size * 0.42,
+          background: 'linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.92), rgba(255,255,255,0))',
+          zIndex: 0,
+          pointerEvents: 'none',
+        }}
+      />
+      <motion.span
+        variants={{
+          rest: { opacity: 0.38, scale: 1, rotate: 0 },
+          hover: { opacity: 1, scale: 0.84, rotate: 18 },
+        }}
+        transition={{ type: 'spring', stiffness: 460, damping: 32 }}
+        style={{
+          position: 'absolute',
+          inset: -1,
+          borderRadius: '50%',
+          border: '1px solid currentColor',
+          zIndex: 1,
+          pointerEvents: 'none',
+        }}
+      />
+      <motion.span
+        variants={{
+          rest: { y: 0, rotate: 0, scale: 1 },
+          hover: isMail ? { y: -1, rotate: -8, scale: 1.04 } : { y: 0, rotate: 12, scale: 1.06 },
+        }}
+        transition={{ type: 'spring', stiffness: 560, damping: 24 }}
+        style={{ display: 'grid', placeItems: 'center', position: 'relative', zIndex: 2 }}
+      >
+        {isMail ? <Mail size={iconSize} strokeWidth={2.1} /> : <InstagramGlyph size={iconSize} />}
+      </motion.span>
+    </motion.a>
   );
 };
 
@@ -333,6 +529,12 @@ const SHORT_TITLE: Record<string, string> = {
   '10 - Godkiller': 'Godkiller',
 };
 
+const MOBILE_HERO_FOCAL_POINT: Record<string, string> = {
+  '01 - Leviathan RCG': '50% center',
+  '05 - Leviathan Icebreaker': '56% center',
+  '08 - MTG Dawn of Phyrexian Invasion': '66% center',
+};
+
 const mediaReveal = {
   enter: (dir: number) => ({ x: `${dir * 12}%`, scale: 1.12, opacity: 0, filter: 'blur(14px)' }),
   center: { x: '0%', scale: 1, opacity: 1, filter: 'blur(0px)' },
@@ -357,11 +559,12 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
 
   useEffect(() => {
     if (projects.length <= 1) return;
-    const interval = setInterval(() => {
+    const duration = currentIndex === projects.length - 1 ? 7000 : 5000;
+    const timeout = window.setTimeout(() => {
       setCurrentIndex((prev) => (prev + 1) % projects.length);
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [projects]);
+    }, duration);
+    return () => window.clearTimeout(timeout);
+  }, [currentIndex, projects.length]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -375,6 +578,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   let displayTitle = project?.title || '';
   if (project?.title === 'LDR Scream of Tyrannosaurus') displayTitle = 'Love Death & Robots Season 4: Scream of the Tyrannosaurus';
   if (project?.title === 'Secret Level Concord') displayTitle = 'Secret Level Season 1 : Concord';
+  const scrambledDisplayTitle = useScrambleText(displayTitle, playHeroIntro, 90);
 
   const paginate = (idx: number, dir?: number) => {
     setState(([prev]) => {
@@ -416,19 +620,39 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
             <AnimatePresence>
               <motion.div
                 key={`mobile-hero-${currentIndex}`}
-                initial={{ opacity: 0, scale: 1.12, filter: 'blur(28px) brightness(0.34) saturate(1.2)' }}
-                animate={{ opacity: 1, scale: 1.08, filter: 'blur(28px) brightness(0.38) saturate(1.22)' }}
-                exit={{ opacity: 0, scale: 1.1, filter: 'blur(30px) brightness(0.32) saturate(1.18)' }}
-                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                initial={{ opacity: 0, scale: 1.045, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, scale: 1, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, scale: 1.02, filter: 'blur(5px)' }}
+                transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
                 style={{ position: 'absolute', inset: 0, zIndex: 0 }}
               >
                 {project.video ? (
-                  <video autoPlay muted loop playsInline src={project.video} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <video
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    src={project.video}
+                    className="mobile-hero-media"
+                    style={{ objectPosition: MOBILE_HERO_FOCAL_POINT[project.id] ?? '50% center' }}
+                  />
                 ) : (
-                  <img src={project.thumbnail} alt={project.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                  <img
+                    src={project.thumbnail}
+                    alt={project.title}
+                    className="mobile-hero-media"
+                    style={{ objectPosition: MOBILE_HERO_FOCAL_POINT[project.id] ?? '50% center' }}
+                  />
                 )}
               </motion.div>
             </AnimatePresence>
+
+            <Link
+              to={`/project/${project.id}`}
+              state={{ initialImageIndex: 0 }}
+              aria-label={`Open ${project.title}`}
+              className="mobile-hero-full-link"
+            />
 
             <div
               style={{
@@ -436,11 +660,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                 inset: 0,
                 zIndex: 1,
                 pointerEvents: 'none',
-                background: [
-                  'linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.10) 36%, rgba(0,0,0,0.72) 100%)',
-                  'radial-gradient(circle at 22% 12%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.06) 22%, rgba(0,0,0,0) 46%)',
-                  'linear-gradient(90deg, rgba(0,0,0,0.58) 0%, rgba(0,0,0,0.12) 48%, rgba(0,0,0,0.20) 100%)'
-                ].join(', ')
+                background: 'linear-gradient(180deg, rgba(0,0,0,0.54) 0%, rgba(0,0,0,0.04) 34%, rgba(0,0,0,0.08) 58%, rgba(0,0,0,0.84) 100%)'
               }}
             />
 
@@ -448,7 +668,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               initial={{ opacity: 0, y: 18, scale: 0.97, filter: 'blur(8px)' }}
               animate={playHeroIntro ? { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' } : { opacity: 0, y: 18, scale: 0.97, filter: 'blur(8px)' }}
               transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay: 0.12 }}
-              style={{ position: 'absolute', top: isTablet ? 'calc(env(safe-area-inset-top, 0px) + 138px)' : 'calc(env(safe-area-inset-top, 0px) + 126px)', left: isTablet ? '48px' : '20px', right: isTablet ? '48px' : '20px', zIndex: 2, display: 'flex', justifyContent: 'center', pointerEvents: 'auto' }}
+              style={{ display: 'none' }}
             >
               <Link
                 to={`/project/${project.id}`}
@@ -491,7 +711,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                       transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
                       style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '22px', fontWeight: 900, letterSpacing: '-0.04em', lineHeight: 1.05, color: '#fff', textTransform: 'uppercase', textAlign: 'center' }}
                     >
-                      {displayTitle}
+                      {scrambledDisplayTitle}
                     </motion.div>
                   </AnimatePresence>
                 </div>
@@ -502,11 +722,11 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
               animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: 12, filter: 'blur(8px)' }}
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-              style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 48px)', left: '18px', right: '18px', zIndex: 3, color: '#fff', textAlign: 'center', textShadow: '0 3px 18px rgba(0,0,0,0.78)' }}
+              className="mobile-hero-identity"
             >
-              <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', maxWidth: 'calc(100vw - 56px)' }}>
+              <div>
                 <div style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '19px', fontWeight: 820, lineHeight: 1, letterSpacing: '0px', whiteSpace: 'nowrap' }}>
-                  Yogi Soelastama
+                  YOGI SOELASTAMA
                 </div>
                 <div style={{ marginTop: '8px', fontSize: '9px', fontWeight: 800, letterSpacing: '1.45px', lineHeight: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', whiteSpace: 'nowrap' }}>
                   Cinematic Concept Artist
@@ -518,27 +738,23 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               initial={{ opacity: 0, y: 18, filter: 'blur(8px)' }}
               animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: 18, filter: 'blur(8px)' }}
               transition={{ duration: 0.75, ease: [0.16, 1, 0.3, 1], delay: 0.18 }}
-              style={{ position: 'absolute', left: '16px', right: '16px', bottom: isTablet ? 'calc(env(safe-area-inset-bottom, 0px) + 52px)' : 'calc(env(safe-area-inset-bottom, 0px) + 108px)', zIndex: 4, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '13px' }}
+              className="mobile-hero-project-copy"
             >
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 44px)', gap: '12px', alignItems: 'center', justifyContent: 'center', padding: '8px', borderRadius: '999px', background: 'rgba(6,6,8,0.38)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 46px rgba(0,0,0,0.42)', backdropFilter: 'blur(18px) saturate(1.25)', WebkitBackdropFilter: 'blur(18px) saturate(1.25)' }}>
-                <a href="mailto:yogisdesign@gmail.com" aria-label="Email Yogi" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
-                  <Mail size={18} strokeWidth={2.1} />
-                </a>
-                <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" aria-label="Instagram" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none', fontSize: '12px', fontWeight: 900, letterSpacing: '0.4px' }}>
-                  <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
-                    <rect x="3" y="3" width="18" height="18" rx="5.2" fill="none" stroke="currentColor" strokeWidth="2" />
-                    <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" strokeWidth="2" />
-                    <circle cx="17.35" cy="6.65" r="1.35" fill="currentColor" />
-                  </svg>
-                </a>
-                <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook" style={{ width: 44, height: 44, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
-                  <svg width="19" height="19" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', position: 'relative', top: '-3px' }}>
-                    <path fill="currentColor" d="M14.5 8.25h2.25V4.5h-2.9c-3.45 0-5.35 2.05-5.35 5.2v2.55H5.75v4.05H8.5V24h4.35v-7.7h3.18l.52-4.05h-3.7v-2.1c0-1.17.32-1.9 1.65-1.9Z" />
-                  </svg>
-                </a>
-                <span role="img" aria-label="Profile photo" style={{ width: 44, height: 44, borderRadius: '50%', display: 'block', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.24)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.35)' }}>
-                  <img src="/assets/profile-dummy.jpg" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                </span>
+              <span className="mobile-hero-project-label">Now playing</span>
+              <AnimatePresence mode="popLayout">
+                <motion.h1
+                  key={`mobile-full-title-${displayTitle}`}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+                >
+                  {displayTitle}
+                </motion.h1>
+              </AnimatePresence>
+              <div className="mobile-hero-socials">
+                <SocialIconLink href="mailto:yogisdesign@gmail.com" ariaLabel="Email Yogi" icon="mail" size={42} />
+                <SocialIconLink href="https://www.instagram.com/" ariaLabel="Instagram" icon="instagram" size={42} external />
               </div>
             </motion.div>
 
@@ -583,26 +799,10 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               initial={{ opacity: 0, y: -10, filter: 'blur(8px)' }}
               animate={playHeroIntro ? { opacity: 1, y: 0, filter: 'blur(0px)' } : { opacity: 0, y: -10, filter: 'blur(8px)' }}
               transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1], delay: 0.35 }}
-              style={{ position: 'absolute', top: '32px', right: '48px', zIndex: 4, display: 'grid', gridTemplateColumns: 'repeat(4, 34px)', gap: '8px', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '999px', background: 'rgba(6,6,8,0.34)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 46px rgba(0,0,0,0.34)', backdropFilter: 'blur(18px) saturate(1.2)', WebkitBackdropFilter: 'blur(18px) saturate(1.2)' }}
+              style={{ position: 'absolute', top: '32px', right: '48px', zIndex: 4, display: 'grid', gridTemplateColumns: 'repeat(2, 34px)', gap: '8px', alignItems: 'center', justifyContent: 'center', padding: '6px', borderRadius: '999px', background: 'rgba(6,6,8,0.34)', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 18px 46px rgba(0,0,0,0.34)', backdropFilter: 'blur(18px) saturate(1.2)', WebkitBackdropFilter: 'blur(18px) saturate(1.2)' }}
             >
-              <a href="mailto:yogisdesign@gmail.com" aria-label="Email Yogi" onMouseEnter={() => cursor.set({ mode: 'link' })} onMouseLeave={() => cursor.set({ mode: 'default' })} style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.12), rgba(255,255,255,0.04))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
-                <Mail size={14} strokeWidth={2.1} />
-              </a>
-              <a href="https://www.instagram.com/" target="_blank" rel="noreferrer" aria-label="Instagram" onMouseEnter={() => cursor.set({ mode: 'link' })} onMouseLeave={() => cursor.set({ mode: 'default' })} style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block' }}>
-                  <rect x="3" y="3" width="18" height="18" rx="5.2" fill="none" stroke="currentColor" strokeWidth="2" />
-                  <circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" strokeWidth="2" />
-                  <circle cx="17.35" cy="6.65" r="1.35" fill="currentColor" />
-                </svg>
-              </a>
-              <a href="https://www.facebook.com/" target="_blank" rel="noreferrer" aria-label="Facebook" onMouseEnter={() => cursor.set({ mode: 'link' })} onMouseLeave={() => cursor.set({ mode: 'default' })} style={{ width: 34, height: 34, borderRadius: '50%', display: 'grid', placeItems: 'center', color: '#fff', background: 'linear-gradient(180deg, rgba(255,255,255,0.13), rgba(255,255,255,0.045))', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true" style={{ display: 'block', position: 'relative', top: '-2px' }}>
-                  <path fill="currentColor" d="M14.5 8.25h2.25V4.5h-2.9c-3.45 0-5.35 2.05-5.35 5.2v2.55H5.75v4.05H8.5V24h4.35v-7.7h3.18l.52-4.05h-3.7v-2.1c0-1.17.32-1.9 1.65-1.9Z" />
-                </svg>
-              </a>
-              <span role="img" aria-label="Profile photo" style={{ width: 34, height: 34, borderRadius: '50%', display: 'block', overflow: 'hidden', background: '#080808', border: '1px solid rgba(255,255,255,0.24)', boxShadow: 'inset 0 0 0 1px rgba(0,0,0,0.35)' }}>
-                <img src="/assets/profile-dummy.jpg" alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-              </span>
+              <SocialIconLink href="mailto:yogisdesign@gmail.com" ariaLabel="Email Yogi" icon="mail" size={34} />
+              <SocialIconLink href="https://www.instagram.com/" ariaLabel="Instagram" icon="instagram" size={34} external />
             </motion.div>
           </>
         )}
@@ -676,24 +876,14 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
             <AnimatePresence mode="wait">
               <motion.div
                 key={displayTitle}
-                initial="hidden"
-                animate="visible"
-                exit="exit"
-                variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.012, delayChildren: 0 } }, exit: { transition: { staggerChildren: 0.008, staggerDirection: -1 } } }}
+                initial={{ opacity: 0, y: 6, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
+                transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                 className="hero-now-playing-title"
-                style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '22px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '-0.04em', textShadow: '0 2px 10px rgba(0,0,0,1)', color: '#fff', display: 'flex', overflow: 'hidden' }}
+                style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '22px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,1)', color: '#fff', overflow: 'hidden' }}
               >
-                {displayTitle.split('').map((char: string, i: number) => (
-                  <motion.span
-                    key={i}
-                    variants={{
-                      hidden: { y: '105%', opacity: 0, filter: 'blur(6px)' },
-                      visible: { y: '0%', opacity: 1, filter: 'blur(0px)', transition: { duration: 0.32, ease: [0.16, 1, 0.3, 1] } },
-                      exit: { y: '-105%', opacity: 0, filter: 'blur(4px)', transition: { duration: 0.22, ease: [0.4, 0, 1, 1] } }
-                    }}
-                    style={{ display: 'inline-block', whiteSpace: 'pre' }}
-                  >{char}</motion.span>
-                ))}
+                {scrambledDisplayTitle}
               </motion.div>
             </AnimatePresence>
           </div>
@@ -841,6 +1031,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
 const AboutSection = () => {
   const sectionRef = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
+  const [isEmailHovered, setIsEmailHovered] = useState(false);
+  const cursor = useCursor();
 
   useEffect(() => {
     const el = sectionRef.current;
@@ -899,31 +1091,19 @@ const AboutSection = () => {
       transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] }
     }
   };
-  const emailTextChars = "yogisdesign@gmail.com".split("");
+  const emailText = "yogisdesign@gmail.com";
+  const scrambledEmailText = useScrambleText(emailText, isEmailHovered);
   const emailVariants: Variants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { delayChildren: 0.28, staggerChildren: 0.018 }
-    },
-    hover: {
-      transition: { staggerChildren: 0.015, staggerDirection: 1 }
-    }
-  };
-  const emailCharVariants: Variants = {
-    hidden: { opacity: 0, y: 18, rotateX: -80, filter: 'blur(12px)' },
+    hidden: { opacity: 0, y: 10, filter: 'blur(8px)' },
     visible: {
       opacity: 1,
       y: 0,
-      rotateX: 0,
-      color: '#ffffff',
       filter: 'blur(0px)',
-      transition: { duration: 0.72, ease: [0.16, 1, 0.3, 1] }
+      transition: { duration: 0.72, delay: 0.28, ease: [0.16, 1, 0.3, 1] }
     },
     hover: {
-      y: -4,
-      color: '#ff6b00',
-      transition: { type: 'spring', stiffness: 400, damping: 10 }
+      opacity: 0.92,
+      transition: { duration: 0.18 }
     }
   };
 
@@ -938,12 +1118,20 @@ const AboutSection = () => {
         </div>
         <div className="credits-items-row">
           <div className="credits-row">
-            <img src={netflixLogoSrc} alt="Netflix" className="credits-logo-netflix" style={{ filter: 'grayscale(1) brightness(10)', flexShrink: 0 }} />
-            <img src={primeLogoSrc} alt="Prime Video" className="credits-logo-prime" style={{ filter: 'grayscale(1) brightness(10)', flexShrink: 0 }} />
+            <div className="credits-item credits-item-first">
+              <img src={netflixLogoSrc} alt="Netflix" className="credits-logo-netflix" style={{ filter: 'grayscale(1) brightness(10)', flexShrink: 0 }} />
+            </div>
+            <div className="credits-item">
+              <img src={primeLogoSrc} alt="Prime Video" className="credits-logo-prime" style={{ filter: 'grayscale(1) brightness(10)', flexShrink: 0 }} />
+            </div>
           </div>
           <div className="credits-row">
-            <span className="credits-item-text">AXIS STUDIOS</span>
-            <span className="credits-item-text" style={{ fontStyle: 'italic' }}>GOODBYE KANSAS</span>
+            <div className="credits-item">
+              <span className="credits-item-text">AXIS STUDIOS</span>
+            </div>
+            <div className="credits-item">
+              <span className="credits-item-text" style={{ fontStyle: 'italic' }}>GOODBYE KANSAS</span>
+            </div>
           </div>
         </div>
       </div>
@@ -1001,6 +1189,14 @@ const AboutSection = () => {
             initial="hidden"
             animate={inView ? "visible" : "hidden"}
             whileHover="hover"
+            onMouseEnter={() => {
+              setIsEmailHovered(true);
+              cursor.set({ mode: 'link' });
+            }}
+            onMouseLeave={() => {
+              setIsEmailHovered(false);
+              cursor.set({ mode: 'default' });
+            }}
             style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px',
               padding: '8px 0', fontSize: '16px', fontWeight: 800,
@@ -1009,44 +1205,20 @@ const AboutSection = () => {
             }}
           >
             <motion.span
-              style={{ display: 'inline-flex', perspective: '1000px' }}
-              variants={emailVariants}
+              style={{ display: 'inline-block', minWidth: '23ch' }}
             >
-              {emailTextChars.map((char, index) => (
-                <motion.span
-                  key={`${char}-${index}`}
-                  variants={emailCharVariants}
-                  style={{ display: 'inline-block', whiteSpace: 'pre' }}
-                >
-                  {char}
-                </motion.span>
-              ))}
+              {scrambledEmailText}
             </motion.span>
             <motion.span
-              variants={emailCharVariants}
               style={{ display: 'inline-block' }}
-              transition={{ duration: 0.72, ease: [0.16, 1, 0.3, 1], delay: 0.42 }}
+              initial={{ opacity: 0, x: -6, y: 8, rotate: -12, filter: 'blur(6px)' }}
+              animate={inView ? { opacity: 1, x: 0, y: 0, rotate: 0, filter: 'blur(0px)' } : { opacity: 0, x: -6, y: 8, rotate: -12, filter: 'blur(6px)' }}
+              transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.46 }}
             >
               <motion.span
                 style={{ display: 'inline-block' }}
-                variants={{
-                  hidden: { opacity: 0, x: -6, y: 8, rotate: -12, filter: 'blur(6px)' },
-                  visible: {
-                    opacity: 1,
-                    x: 0,
-                    y: 0,
-                    rotate: 0,
-                    filter: 'blur(0px)',
-                    transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1], delay: 0.46 }
-                  },
-                  hover: {
-                    x: 4,
-                    y: -2,
-                    rotate: -8,
-                    color: '#ff6b00',
-                    transition: { type: 'spring', stiffness: 320, damping: 22 }
-                  }
-                }}
+                animate={isEmailHovered ? { x: 4, y: -2, rotate: -8 } : { x: 0, y: 0, rotate: 0 }}
+                transition={{ type: 'spring', stiffness: 320, damping: 22 }}
               >
                 ↗
               </motion.span>
@@ -1063,6 +1235,7 @@ const AboutSection = () => {
 
 const HeroSection = ({ project, index, isLast }: { project: any; index: number; isLast?: boolean }) => {
   const targetRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const usesProjectGridMechanism = index <= 3;
   const isCompactViewport = useIsMobile();
   const isPhoneViewport = useIsPhone();
@@ -1083,18 +1256,22 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const [canSlideThumbNext, setCanSlideThumbNext] = useState(false);
   const [isMediaSwitching, setIsMediaSwitching] = useState(false);
   const [mediaSwitchDirection, setMediaSwitchDirection] = useState<1 | -1>(1);
-  const [hoveredMediaPanel, setHoveredMediaPanel] = useState<'main' | 'detail-a' | 'detail-b' | null>(null);
+  const [hoveredMediaPanel, setHoveredMediaPanel] = useState<'main' | 'detail-a' | null>(null);
   const [hoveredGridModeZone, setHoveredGridModeZone] = useState<'prev' | 'next' | null>(null);
   const [gridModeTooltipPosition, setGridModeTooltipPosition] = useState({ x: 0, y: 0 });
+  const [isHoldingDetailOpen, setIsHoldingDetailOpen] = useState(false);
+  const [isSidebarInfoHovered, setIsSidebarInfoHovered] = useState(false);
+  const [sidebarInfoHintPosition, setSidebarInfoHintPosition] = useState({ x: 0, y: 0 });
   const [isProjectOneHoverReady, setIsProjectOneHoverReady] = useState(false);
   const [showProgressBar, setShowProgressBar] = useState(false);
-  const [gridMode, setGridMode] = useState<1|2|3>(1);
+  const [gridMode, setGridMode] = useState<1 | 2>(1);
   const [modalImageIndex, setModalImageIndex] = useState<number | null>(null);
   const [shouldHydrateThumbnails, setShouldHydrateThumbnails] = useState(false);
   const [loadedThumbnailIndexes, setLoadedThumbnailIndexes] = useState<Record<number, boolean>>({});
   const isLocked = useRef(false);
   const mediaRequestRef = useRef(0);
   const mediaSwitchTimeoutRef = useRef<number | null>(null);
+  const holdDetailTimeoutRef = useRef<number | null>(null);
   const thumbnailRailRef = useRef<HTMLDivElement>(null);
   const thumbnailButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
@@ -1168,6 +1345,15 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       setGridModeTooltipPosition({ x: 0, y: 0 });
       setHoveredMediaPanel(null);
       setIsProjectOneHoverReady(false);
+      mediaRequestRef.current += 1;
+      if (mediaSwitchTimeoutRef.current != null) {
+        window.clearTimeout(mediaSwitchTimeoutRef.current);
+        mediaSwitchTimeoutRef.current = null;
+      }
+      setSelectedThumbIndex(0);
+      setDisplayedImageIndex(0);
+      setIsMediaSwitching(false);
+      setMediaSwitchDirection(1);
       setTitleState('visible');
       isLocked.current = false;
     }, { threshold: [0, 0.45, 0.95] });
@@ -1384,6 +1570,8 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     setHoveredMediaPanel(null);
     setHoveredGridModeZone(null);
     setGridModeTooltipPosition({ x: 0, y: 0 });
+    setIsSidebarInfoHovered(false);
+    setSidebarInfoHintPosition({ x: 0, y: 0 });
     setModalImageIndex(null);
   }, [project.id]);
 
@@ -1455,6 +1643,24 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     return () => window.clearTimeout(timeoutId);
   }, [selectedThumbIndex, showThumbnailRail]);
 
+  const snapSectionToViewport = () => {
+    if (!usesProjectGridMechanism || modalImageIndex != null) return;
+    const section = targetRef.current;
+    if (!section) return;
+
+    requestAnimationFrame(() => {
+      if (lenisInstance) {
+        (lenisInstance as any).scrollTo(section, {
+          duration: 0.62,
+          easing: (t: number) => 1 - Math.pow(1 - t, 3),
+        });
+        return;
+      }
+
+      section.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    });
+  };
+
   const slideThumbnailRail = (direction: 'prev' | 'next') => {
     const rail = thumbnailRailRef.current;
     if (!rail) return;
@@ -1468,6 +1674,8 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
 
     if (modalImageIndex != null) {
       setModalImageIndex(nextIndex);
+    } else {
+      snapSectionToViewport();
     }
 
     setSelectedThumbIndex(nextIndex);
@@ -1659,26 +1867,58 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     }),
   };
 
-  const clampGridMode = (mode: number): 1 | 2 | 3 => Math.min(3, Math.max(1, mode)) as 1 | 2 | 3;
+  const HOLD_TO_DETAIL_MS = 1000;
+  const clampGridMode = (mode: number): 1 | 2 => Math.min(2, Math.max(1, mode)) as 1 | 2;
   const getGridModeZoneTarget = (zone: 'prev' | 'next') => (
     clampGridMode(gridMode + (zone === 'next' ? 1 : -1))
   );
+  const isHoldToDetailZone = (zone: 'prev' | 'next') => gridMode === 2 && zone === 'next';
   const getGridModeZoneLabel = (zone: 'prev' | 'next') => {
+    if (isHoldToDetailZone(zone)) return 'Hold 1s';
     const targetMode = getGridModeZoneTarget(zone);
     return `${targetMode} Img`;
   };
   const isGridModeZoneActive = (zone: 'prev' | 'next') => getGridModeZoneTarget(zone) !== gridMode;
   const gridModeZones: Array<'prev' | 'next'> = gridMode === 1
     ? ['next']
-    : gridMode === 3
-      ? ['prev']
-      : ['prev', 'next'];
+    : ['prev', 'next'];
+  const cancelHoldToDetail = () => {
+    if (holdDetailTimeoutRef.current != null) {
+      window.clearTimeout(holdDetailTimeoutRef.current);
+      holdDetailTimeoutRef.current = null;
+    }
+    setIsHoldingDetailOpen(false);
+  };
+  const startHoldToDetail = (event: React.PointerEvent<HTMLButtonElement>, zone: 'prev' | 'next') => {
+    if (!isHoldToDetailZone(zone)) return;
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    cancelHoldToDetail();
+    setIsHoldingDetailOpen(true);
+    holdDetailTimeoutRef.current = window.setTimeout(() => {
+      holdDetailTimeoutRef.current = null;
+      setIsHoldingDetailOpen(false);
+      cursor.set({ mode: 'default' });
+      navigate(`/project/${project.id}`, {
+        state: { ...detailLinkState, initialImageIndex: 0 },
+      });
+    }, HOLD_TO_DETAIL_MS);
+  };
+  useEffect(() => () => {
+    if (holdDetailTimeoutRef.current != null) {
+      window.clearTimeout(holdDetailTimeoutRef.current);
+      holdDetailTimeoutRef.current = null;
+    }
+    cursor.set({ mode: 'default' });
+  }, []);
   const handleGridModeZoneClick = (zone: 'prev' | 'next') => {
+    if (isHoldToDetailZone(zone)) return;
     if (!isGridModeZoneActive(zone)) return;
+    snapSectionToViewport();
     setGridMode(currentMode => clampGridMode(currentMode + (zone === 'next' ? 1 : -1)));
   };
   const handleGridModeZoneEnter = (zone: 'prev' | 'next', isActiveZone: boolean) => {
-    if (!isActiveZone) {
+    if (!isActiveZone && !isHoldToDetailZone(zone)) {
       setHoveredGridModeZone(null);
       cursor.set({ mode: 'default' });
       return;
@@ -1688,19 +1928,24 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     cursor.set({ mode: zone === 'next' ? 'grid-next' : 'grid-prev' });
   };
   const handleGridModeZoneLeave = () => {
+    cancelHoldToDetail();
     setHoveredGridModeZone(null);
     cursor.set({ mode: 'default' });
   };
-  const updateGridModeTooltipPosition = (event: React.MouseEvent<HTMLButtonElement>) => {
-    const overlayBounds = event.currentTarget.parentElement?.getBoundingClientRect();
-    if (!overlayBounds) return;
 
+  useEffect(() => {
+    if (isGrid && !isProjectOneCompactLayout) return;
+    setHoveredGridModeZone(null);
+    cursor.set({ mode: 'default' });
+  }, [cursor.set, isGrid, isProjectOneCompactLayout]);
+
+  const updateGridModeTooltipPosition = (event: React.MouseEvent<HTMLButtonElement>) => {
     setGridModeTooltipPosition({
-      x: event.clientX - overlayBounds.left,
-      y: event.clientY - overlayBounds.top,
+      x: event.clientX,
+      y: event.clientY,
     });
   };
-  const renderGridModeIcon = (mode: 1 | 2 | 3) => (
+  const renderGridModeIcon = (mode: 1 | 2) => (
     <svg width="15" height="15" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, color: '#fff' }}>
       {mode === 1 && <rect x="1" y="1" width="12" height="12" rx="1.5" fill="currentColor" opacity="0.9"/>}
       {mode === 2 && (
@@ -1709,14 +1954,57 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
           <rect x="1" y="7.5" width="12" height="5.5" rx="1.5" fill="currentColor" opacity="0.9"/>
         </>
       )}
-      {mode === 3 && (
-        <>
-          <rect x="1" y="1" width="12" height="4" rx="1.5" fill="currentColor" opacity="0.9"/>
-          <rect x="1" y="5.5" width="5.5" height="7.5" rx="1.5" fill="currentColor" opacity="0.9"/>
-          <rect x="7.5" y="5.5" width="5.5" height="7.5" rx="1.5" fill="currentColor" opacity="0.9"/>
-        </>
-      )}
     </svg>
+  );
+  const renderHoldToDetailIcon = () => (
+    <motion.span
+      initial={false}
+      animate={isHoldingDetailOpen ? { scale: 1.06 } : { scale: 1 }}
+      transition={{ type: 'spring', stiffness: 420, damping: 28 }}
+      style={{
+        position: 'relative',
+        width: 22,
+        height: 22,
+        borderRadius: '50%',
+        display: 'inline-grid',
+        placeItems: 'center',
+        background: 'rgba(255,255,255,0.08)',
+        boxShadow: isHoldingDetailOpen ? '0 0 24px rgba(255,255,255,0.22)' : 'inset 0 0 0 1px rgba(255,255,255,0.08)',
+      }}
+    >
+      <svg width="22" height="22" viewBox="0 0 22 22" style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+        <circle cx="11" cy="11" r="8.5" fill="none" stroke="rgba(255,255,255,0.18)" strokeWidth="1.5" />
+        <motion.circle
+          key={isHoldingDetailOpen ? 'hold-progress' : 'hold-idle'}
+          cx="11"
+          cy="11"
+          r="8.5"
+          fill="none"
+          stroke="#fff"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          initial={{ pathLength: 0, opacity: isHoldingDetailOpen ? 1 : 0.42 }}
+          animate={{ pathLength: isHoldingDetailOpen ? 1 : 0.18, opacity: isHoldingDetailOpen ? 1 : 0.42 }}
+          transition={isHoldingDetailOpen ? { duration: HOLD_TO_DETAIL_MS / 1000, ease: 'linear' } : { duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+        />
+      </svg>
+      <motion.span
+        initial={false}
+        animate={isHoldingDetailOpen ? { scale: 0.86, opacity: 0.95 } : { scale: 1, opacity: 0.86 }}
+        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        style={{
+          width: 16,
+          height: 16,
+          borderRadius: '50%',
+          background: 'rgba(10,10,10,0.74)',
+          display: 'inline-grid',
+          placeItems: 'center',
+          color: '#fff',
+        }}
+      >
+        <ExternalLink size={9} strokeWidth={2.5} />
+      </motion.span>
+    </motion.span>
   );
 
   const gridModeHoverZones = (
@@ -1737,14 +2025,20 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
         >
           {gridModeZones.map(zone => {
             const isActiveZone = isGridModeZoneActive(zone);
+            const isHoldZone = isHoldToDetailZone(zone);
+            const isInteractiveZone = isActiveZone || isHoldZone;
             return (
             <button
               key={zone}
               type="button"
-              aria-label={zone === 'next' ? 'Show one more image' : 'Show one fewer image'}
-              disabled={!isActiveZone}
+              aria-label={isHoldZone ? 'Hold to open project detail' : (zone === 'next' ? 'Show one more image' : 'Show one fewer image')}
+              disabled={!isInteractiveZone}
               onClick={() => handleGridModeZoneClick(zone)}
-              onMouseEnter={() => handleGridModeZoneEnter(zone, isActiveZone)}
+              onPointerDown={(event) => startHoldToDetail(event, zone)}
+              onPointerUp={cancelHoldToDetail}
+              onPointerCancel={cancelHoldToDetail}
+              onLostPointerCapture={cancelHoldToDetail}
+              onMouseEnter={() => handleGridModeZoneEnter(zone, isInteractiveZone)}
               onMouseMove={updateGridModeTooltipPosition}
               onMouseLeave={handleGridModeZoneLeave}
               style={{
@@ -1764,45 +2058,78 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
             </button>
             );
           })}
-          <AnimatePresence>
-            {hoveredGridModeZone && isGridModeZoneActive(hoveredGridModeZone) && (
-              <motion.span
-                key={hoveredGridModeZone}
-                initial={{ opacity: 0, x: gridModeTooltipPosition.x + 18, y: gridModeTooltipPosition.y, scale: 0.98 }}
-                animate={{ opacity: 1, x: gridModeTooltipPosition.x + 18, y: gridModeTooltipPosition.y, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ opacity: { duration: 0.14 }, scale: { duration: 0.14 } }}
-                style={{
-                  position: 'absolute',
-                  left: 0,
-                  top: 0,
-                  translateY: '-50%',
-                  padding: '0 10px',
-                  height: '28px',
-                  borderRadius: '6px',
-                  background: 'rgba(8,8,8,0.78)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  color: '#fff',
-                  fontSize: '11px',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  letterSpacing: '0.04em',
-                  whiteSpace: 'nowrap',
-                  pointerEvents: 'none',
-                  backdropFilter: 'blur(10px)',
-                  boxShadow: '0 10px 28px rgba(0,0,0,0.35)',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                }}
-              >
-                {hoveredGridModeZone === 'next' ? '+ ' : '- '}
-                {getGridModeZoneLabel(hoveredGridModeZone)}
-                {renderGridModeIcon(getGridModeZoneTarget(hoveredGridModeZone))}
-              </motion.span>
-            )}
-          </AnimatePresence>
         </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  const gridModeTooltipLayer = (
+    <AnimatePresence>
+      {hoveredGridModeZone && (isGridModeZoneActive(hoveredGridModeZone) || isHoldToDetailZone(hoveredGridModeZone)) && (
+        <motion.span
+          key={`${hoveredGridModeZone}-${isHoldToDetailZone(hoveredGridModeZone) ? 'hold' : 'grid'}`}
+          initial={{ opacity: 0, x: gridModeTooltipPosition.x + 16, y: gridModeTooltipPosition.y, scale: 0.94, filter: 'blur(4px)' }}
+          animate={{
+            opacity: 1,
+            x: gridModeTooltipPosition.x + 16,
+            y: gridModeTooltipPosition.y,
+            scale: isHoldToDetailZone(hoveredGridModeZone) && isHoldingDetailOpen ? 1.035 : 1,
+            filter: 'blur(0px)',
+          }}
+          exit={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+          transition={{
+            opacity: { duration: 0.18 },
+            scale: { type: 'spring', stiffness: 360, damping: 28 },
+            filter: { duration: 0.18 },
+            x: { type: 'spring', stiffness: 520, damping: 42 },
+            y: { type: 'spring', stiffness: 520, damping: 42 },
+          }}
+          style={{
+            position: 'fixed',
+            left: 0,
+            top: 0,
+            zIndex: 2147483000,
+            translateY: '-50%',
+            padding: isHoldToDetailZone(hoveredGridModeZone) ? '0 12px 0 7px' : '0 10px',
+            height: isHoldToDetailZone(hoveredGridModeZone) ? '36px' : '28px',
+            borderRadius: isHoldToDetailZone(hoveredGridModeZone) ? '999px' : '6px',
+            background: isHoldToDetailZone(hoveredGridModeZone)
+              ? 'linear-gradient(180deg, rgba(18,18,18,0.92), rgba(5,5,5,0.88))'
+              : 'rgba(8,8,8,0.82)',
+            border: isHoldToDetailZone(hoveredGridModeZone) ? '1px solid rgba(255,255,255,0.18)' : '1px solid rgba(255,255,255,0.12)',
+            color: '#fff',
+            fontSize: '11px',
+            fontWeight: 700,
+            lineHeight: 1,
+            letterSpacing: '0.04em',
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            backdropFilter: 'blur(10px)',
+            WebkitBackdropFilter: 'blur(10px)',
+            boxShadow: isHoldToDetailZone(hoveredGridModeZone) && isHoldingDetailOpen
+              ? '0 14px 34px rgba(0,0,0,0.42), 0 0 28px rgba(255,255,255,0.10)'
+              : '0 10px 28px rgba(0,0,0,0.35)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: isHoldToDetailZone(hoveredGridModeZone) ? '8px' : '6px',
+            overflow: 'hidden',
+          }}
+        >
+          {isHoldToDetailZone(hoveredGridModeZone) ? (
+            <>
+              {renderHoldToDetailIcon()}
+              <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.11em', textTransform: 'uppercase' }}>
+                Hold to open project
+              </span>
+            </>
+          ) : (
+            <>
+              {hoveredGridModeZone === 'next' ? '+ ' : '- '}
+              {getGridModeZoneLabel(hoveredGridModeZone)}
+              {renderGridModeIcon(getGridModeZoneTarget(hoveredGridModeZone))}
+            </>
+          )}
+        </motion.span>
       )}
     </AnimatePresence>
   );
@@ -1816,7 +2143,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
         height: isProjectOneCompactLayout ? compactViewportHeight : '100vh',
         zIndex: index,
         backgroundColor: '#000',
-        overflow: 'hidden'
+        overflow: 'visible'
       }}
     >
       <motion.div 
@@ -1912,7 +2239,7 @@ backfaceVisibility: 'hidden',
               >
               <Link
                 to={`/project/${project.id}`}
-                state={{ ...detailLinkState, initialImageIndex: displayedImageIndex }}
+                state={{ ...detailLinkState, initialImageIndex: 0 }}
                 onMouseEnter={() => {
                   cursor.set({ mode: 'link' });
                   if (!usesProjectGridMechanism || isProjectOneHoverReady) {
@@ -1982,7 +2309,7 @@ backfaceVisibility: 'hidden',
                 }}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: gridMode === 3 ? '1fr 1fr' : '1fr',
+                  gridTemplateColumns: '1fr',
                   width: isProjectOnePhoneLayout ? 'calc(100% - 32px)' : '100%',
                   maxWidth: isProjectOnePhoneLayout ? '430px' : undefined,
                   alignSelf: isProjectOnePhoneLayout ? 'center' : undefined,
@@ -1999,7 +2326,7 @@ backfaceVisibility: 'hidden',
                 <div className="focus-layer" style={{ width: '100%', height: '100%' }}>
                   <Link
                     to={`/project/${project.id}`}
-                    state={{ ...detailLinkState, initialImageIndex: (displayedImageIndex + 1) % totalProjectImages }}
+                    state={{ ...detailLinkState, initialImageIndex: 0 }}
                     onMouseEnter={() => {
                       cursor.set({ mode: 'link' });
                       if (isProjectOneHoverReady) {
@@ -2035,46 +2362,7 @@ backfaceVisibility: 'hidden',
                     </AnimatePresence>
                   </Link>
                 </div>
-                {gridMode === 3 && <div className="focus-layer" style={{ width: '100%', height: '100%' }}>
-                  <Link
-                    to={`/project/${project.id}`}
-                    state={{ ...detailLinkState, initialImageIndex: (displayedImageIndex + 2) % totalProjectImages }}
-                    onMouseEnter={() => {
-                      cursor.set({ mode: 'link' });
-                      if (isProjectOneHoverReady) {
-                        setHoveredMediaPanel('detail-b');
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      cursor.set({ mode: 'default' });
-                      setHoveredMediaPanel(null);
-                    }}
-                    style={{ display: 'grid', width: '100%', height: '100%' }}
-                  >
-                    <AnimatePresence initial={false} custom={mediaSwitchDirection} mode="popLayout">
-                      <motion.div
-                        key={`detail-media-b-${displayedImageIndex}`}
-                        custom={mediaSwitchDirection}
-                        variants={detailMediaVariants}
-                        initial="enter"
-                        animate="center"
-                        exit="exit"
-                        style={{
-                          display: 'grid',
-                          width: '100%',
-                          height: '100%',
-                          gridArea: '1 / 1 / 2 / 2',
-                          willChange: 'transform, opacity, filter',
-                        }}
-                      >
-                        {renderProjectMedia((displayedImageIndex + 2) % totalProjectImages, 'Detail 2', {
-                          objectFit: 'cover',
-                        })}
-                      </motion.div>
-                    </AnimatePresence>
-                  </Link>
-                </div>}
-                </motion.div>
+              </motion.div>
             )}
 
             {/* Subtle scrim for text readability */}
@@ -2179,15 +2467,147 @@ backfaceVisibility: 'hidden',
                     willChange: 'transform, opacity, filter'
                   }}
                 >
+                  {!isProjectOnePhoneLayout && (
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Open ${displayTitle} project detail`}
+                      onClick={() => {
+                        cursor.set({ mode: 'default' });
+                        navigate(`/project/${project.id}`, {
+                          state: { ...detailLinkState, initialImageIndex: 0 },
+                        });
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        navigate(`/project/${project.id}`, {
+                          state: { ...detailLinkState, initialImageIndex: 0 },
+                        });
+                      }}
+                      onMouseEnter={(event) => {
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setSidebarInfoHintPosition({
+                          x: event.clientX - bounds.left,
+                          y: event.clientY - bounds.top,
+                        });
+                        setIsSidebarInfoHovered(true);
+                        cursor.set({ mode: 'link' });
+                      }}
+                      onMouseLeave={() => {
+                        setIsSidebarInfoHovered(false);
+                        cursor.set({ mode: 'default' });
+                      }}
+                      onMouseMove={(event) => {
+                        const bounds = event.currentTarget.getBoundingClientRect();
+                        setSidebarInfoHintPosition({
+                          x: event.clientX - bounds.left,
+                          y: event.clientY - bounds.top,
+                        });
+                      }}
+                      style={{ position: 'relative', cursor: 'pointer', outline: 'none' }}
+                    >
+                      <AnimatePresence>
+                        {isSidebarInfoHovered && (
+                          <motion.span
+                            initial={{ opacity: 0, x: sidebarInfoHintPosition.x + 14, y: sidebarInfoHintPosition.y, scale: 0.94, filter: 'blur(4px)' }}
+                            animate={{ opacity: 1, x: sidebarInfoHintPosition.x + 14, y: sidebarInfoHintPosition.y, scale: 1, filter: 'blur(0px)' }}
+                            exit={{ opacity: 0, scale: 0.96, filter: 'blur(4px)' }}
+                            transition={{
+                              opacity: { duration: 0.16 },
+                              scale: { type: 'spring', stiffness: 380, damping: 30 },
+                              x: { type: 'spring', stiffness: 520, damping: 44 },
+                              y: { type: 'spring', stiffness: 520, damping: 44 },
+                              filter: { duration: 0.16 },
+                            }}
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              top: 0,
+                              zIndex: 30,
+                              translateY: '-50%',
+                              height: '30px',
+                              padding: '0 10px',
+                              borderRadius: '999px',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '7px',
+                              background: 'linear-gradient(180deg, rgba(22,22,22,0.92), rgba(7,7,7,0.86))',
+                              border: '1px solid rgba(255,255,255,0.16)',
+                              color: 'rgba(255,255,255,0.78)',
+                              boxShadow: '0 14px 34px rgba(0,0,0,0.38)',
+                              backdropFilter: 'blur(12px)',
+                              WebkitBackdropFilter: 'blur(12px)',
+                              fontSize: '10px',
+                              fontWeight: 800,
+                              lineHeight: 1,
+                              letterSpacing: '0.08em',
+                              textTransform: 'uppercase',
+                              whiteSpace: 'nowrap',
+                              pointerEvents: 'none',
+                            }}
+                          >
+                            Open project
+                            <ExternalLink size={11} strokeWidth={2.4} />
+                          </motion.span>
+                        )}
+                      </AnimatePresence>
                   {!isProjectOnePhoneLayout && <div style={{ marginBottom: isProjectOneCompactLayout ? '12px' : '32px' }}>
-                    <motion.h2
+                    <motion.div
                       initial={false}
                       animate={isSidebarOpen ? 'visible' : 'hidden'}
                       variants={projectOneSidebarTitleVariants}
-                      style={{ fontSize: isProjectOneCompactLayout ? 'clamp(18px, 4.2vw, 24px)' : 'clamp(24px, 2vw, 30px)', fontWeight: 800, lineHeight: 1.1, textTransform: 'uppercase', color: '#fff', letterSpacing: '0.02em' }}
+                      style={{ display: 'inline-block', maxWidth: '100%' }}
                     >
-                      {displayTitle}
-                    </motion.h2>
+                      <motion.div
+                        initial="rest"
+                        whileHover="hover"
+                      >
+                        <div
+                          style={{
+                            position: 'relative',
+                            display: 'inline-block',
+                            maxWidth: '100%',
+                            color: '#fff',
+                            textDecoration: 'none',
+                            outline: 'none',
+                          }}
+                        >
+                          <motion.h2
+                            variants={{
+                              rest: { x: 0, opacity: 1, filter: 'blur(0px)' },
+                              hover: { x: 0, opacity: 0.92, filter: 'blur(0px)' },
+                            }}
+                            transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                            style={{
+                              margin: 0,
+                              fontSize: isProjectOneCompactLayout ? 'clamp(18px, 4.2vw, 24px)' : 'clamp(24px, 2vw, 30px)',
+                              fontWeight: 800,
+                              lineHeight: 1.1,
+                              textTransform: 'uppercase',
+                              color: '#fff',
+                              letterSpacing: '0.02em',
+                            }}
+                          >
+                            {displayTitle}
+                          </motion.h2>
+                          <motion.span
+                            animate={isSidebarInfoHovered ? { scaleX: 1, opacity: 1 } : { scaleX: 0, opacity: 0 }}
+                            transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
+                            style={{
+                              position: 'absolute',
+                              left: 0,
+                              right: 0,
+                              bottom: '-6px',
+                              height: '1px',
+                              background: 'linear-gradient(90deg, rgba(255,255,255,0.85), rgba(255,255,255,0))',
+                              transformOrigin: 'left center',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        </div>
+                      </motion.div>
+                    </motion.div>
                   </div>}
 
                 {!isProjectOnePhoneLayout && <div style={{ marginBottom: isProjectOneCompactLayout ? '14px' : '52px' }}>
@@ -2239,6 +2659,8 @@ backfaceVisibility: 'hidden',
                     ))}
                   </div>
                 </div>}
+                    </div>
+                  )}
 
                 {!isProjectOnePhoneLayout && totalProjectImages > 1 && (
                   <div style={{ marginTop: isProjectOneCompactLayout ? '12px' : '56px' }}>
@@ -2447,6 +2869,7 @@ backfaceVisibility: 'hidden',
 
         </div>
       </motion.div>
+      {gridModeTooltipLayer}
 
       {/* FULL SCREEN LIGHTBOX */}
       <AnimatePresence>
@@ -2626,7 +3049,38 @@ backfaceVisibility: 'hidden',
 
 
 
+const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => (
+  <section className="mobile-home-projects" aria-label="Featured projects">
+    <div className="mobile-home-projects-frame">
+      {projects.map((project, projectIndex) => {
+        const desktopThumbnail = Array.isArray(project.images) && project.images.length
+          ? project.images[project.images.length - 1]
+          : project.thumbnail;
+
+        return (
+          <Link
+            key={project.id}
+            to={`/project/${project.id}`}
+            state={{ initialImageIndex: 0 }}
+            className="mobile-home-project-thumbnail"
+            aria-label={`Open ${project.title} project`}
+          >
+            <img
+              src={desktopThumbnail}
+              alt={project.title}
+              loading={projectIndex === 0 ? 'eager' : 'lazy'}
+              decoding="async"
+              draggable={false}
+            />
+          </Link>
+        );
+      })}
+    </div>
+  </section>
+);
+
 const Home = () => {
+  const isPhoneViewport = useIsPhone();
   const order = [
     'Leviathan RCG',
     'Love, Death & Robot Season 4 : Scream of the Tyrannosaurus',
@@ -2642,6 +3096,7 @@ const Home = () => {
 
   const orderedProjects: any[] = order.map(title => projectsData.find(p => p.title === title)).filter(Boolean);
   const videoProjects = orderedProjects.filter(p => p.video);
+  const homepageProjects = orderedProjects.slice(1, 4);
 
   return (
     <motion.div
@@ -2651,18 +3106,22 @@ const Home = () => {
 
       <AboutSection />
 
-      {orderedProjects.slice(1, 4).map((project, idx, arr) => {
-        if (!project) return null;
-        return (
-          <React.Fragment key={project.id}>
-            <HeroSection
-              project={project}
-              index={idx + 1}
-              isLast={idx === arr.length - 1}
-            />
-          </React.Fragment>
-        );
-      })}
+      {isPhoneViewport ? (
+        <MobileProjectThumbnails projects={homepageProjects} />
+      ) : (
+        homepageProjects.map((project, idx, arr) => {
+          if (!project) return null;
+          return (
+            <React.Fragment key={project.id}>
+              <HeroSection
+                project={project}
+                index={idx + 1}
+                isLast={idx === arr.length - 1}
+              />
+            </React.Fragment>
+          );
+        })
+      )}
     </motion.div>
   );
 }
@@ -2991,6 +3450,7 @@ function App() {
     <CursorContext.Provider value={{ set: setCursorState }}>
       <Router>
         <LenisController />
+        <CursorRouteReset />
         <CustomCursor cursorState={cursorState} />
         <Navbar />
         <AnimatedRoutes />

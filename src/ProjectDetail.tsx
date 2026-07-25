@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ArrowUp } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import projectsData from './projects.json';
 
 const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
@@ -60,6 +60,64 @@ const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
 };
 
 const isVideoSrc = (src: string) => src.toLowerCase().endsWith('.mp4') || src.toLowerCase().endsWith('.webm');
+const DETAIL_STATIC_IMAGE_COUNT = 2;
+const CAROUSEL_SWITCH_DURATION_MS = 900;
+
+const carouselMediaVariants = {
+  enter: (direction: 1 | -1) => ({
+    opacity: 0,
+    x: direction * 26,
+    y: 12,
+    scale: 1.045,
+    rotate: direction * 0.65,
+    filter: 'blur(14px) brightness(1.08) saturate(1.05)',
+  }),
+  center: {
+    opacity: 1,
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotate: 0,
+    filter: 'blur(0px) brightness(1) saturate(1)',
+    transition: {
+      type: 'spring' as const,
+      stiffness: 70,
+      damping: 18,
+      mass: 0.9,
+    },
+  },
+  exit: (direction: 1 | -1) => ({
+    opacity: 0,
+    x: direction * -18,
+    y: -8,
+    scale: 0.992,
+    rotate: direction * -0.4,
+    filter: 'blur(12px) brightness(0.92)',
+    transition: {
+      duration: 0.45,
+      ease: 'easeInOut' as const,
+    },
+  }),
+};
+
+const preloadCarouselMedia = (src: string) => {
+  if (isVideoSrc(src)) return Promise.resolve();
+
+  return new Promise<void>((resolve) => {
+    const image = new Image();
+    const done = () => resolve();
+    image.onload = async () => {
+      try {
+        await image.decode();
+      } catch {
+        // The loaded image can still be displayed when decode() is unavailable.
+      }
+      done();
+    };
+    image.onerror = done;
+    image.src = src;
+  });
+};
 
 const ProjectDetail = () => {
   const { id } = useParams();
@@ -68,12 +126,12 @@ const ProjectDetail = () => {
   // ─── All hooks must come before any early return ───────────────────────────
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [hoverBtt, setHoverBtt] = useState(false);
-  const [canSlideThumbPrev, setCanSlideThumbPrev] = useState(false);
-  const [canSlideThumbNext, setCanSlideThumbNext] = useState(false);
+  const [isCarouselSwitching, setIsCarouselSwitching] = useState(false);
+  const [[carouselIndex, carouselDirection], setCarouselState] = useState<[number, number]>([0, 1]);
   const scrollRafRef = useRef<number | null>(null);
-  const gallerySnapRafRef = useRef<number | null>(null);
-  const gallerySnapTimeoutRef = useRef<number | null>(null);
-  const galleryThumbnailRailRef = useRef<HTMLDivElement | null>(null);
+  const carouselSnapRafRef = useRef<number | null>(null);
+  const carouselThumbRailRef = useRef<HTMLDivElement | null>(null);
+  const carouselSwitchTimeoutRef = useRef<number | null>(null);
 
   const project = projectsData.find((item) => item.id === id);
   const initialImageIndex: number = (location.state as any)?.initialImageIndex ?? 0;
@@ -81,17 +139,10 @@ const ProjectDetail = () => {
   const detailThumbs = project && Array.isArray((project as any).thumbs) && (project as any).thumbs.length === project.images.length
     ? [...(project as any).thumbs].reverse()
     : detailImages;
-  const hasDesignGoal = Boolean((project as any)?.designGoal);
-  const designGoalInsertAfter = hasDesignGoal
-    ? Math.min(Math.max(Number((project as any).designGoalInsertAfter ?? 3), 0), detailImages.length)
-    : detailImages.length;
-  const leadImages = hasDesignGoal ? detailImages.slice(0, designGoalInsertAfter) : detailImages;
-  const galleryImages = hasDesignGoal ? detailImages.slice(designGoalInsertAfter) : [];
-  const galleryThumbs = hasDesignGoal ? detailThumbs.slice(designGoalInsertAfter) : [];
-  const initialGalleryIndex = galleryImages.length > 0 && initialImageIndex >= designGoalInsertAfter
-    ? Math.min(initialImageIndex - designGoalInsertAfter, galleryImages.length - 1)
-    : 0;
-  const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(initialGalleryIndex);
+  const leadImages = detailImages.slice(0, DETAIL_STATIC_IMAGE_COUNT);
+  const carouselImages = detailImages.slice(DETAIL_STATIC_IMAGE_COUNT);
+  const carouselThumbs = detailThumbs.slice(DETAIL_STATIC_IMAGE_COUNT);
+  const activeCarouselImage = carouselImages[carouselIndex];
 
   // Back-to-top: show after 400 px of scroll
   useEffect(() => {
@@ -101,87 +152,23 @@ const ProjectDetail = () => {
   }, []);
 
   useEffect(() => {
-    setSelectedGalleryIndex(initialGalleryIndex);
-  }, [project?.id, initialGalleryIndex]);
+    const initialCarouselIndex = initialImageIndex >= DETAIL_STATIC_IMAGE_COUNT
+      ? Math.min(initialImageIndex - DETAIL_STATIC_IMAGE_COUNT, Math.max(carouselImages.length - 1, 0))
+      : 0;
+    setCarouselState([initialCarouselIndex, 1]);
+  }, [initialImageIndex, carouselImages.length, project?.id]);
 
-  const updateGalleryThumbSliderState = () => {
-    const rail = galleryThumbnailRailRef.current;
-    if (!rail) {
-      setCanSlideThumbPrev(false);
-      setCanSlideThumbNext(false);
-      return;
-    }
+  useEffect(() => {
+    const rail = carouselThumbRailRef.current;
+    const activeThumb = rail?.querySelector<HTMLElement>('.project-carousel-thumb.is-selected');
+    if (!rail || !activeThumb) return;
 
-    const maxScroll = Math.max(rail.scrollWidth - rail.clientWidth, 0);
-    setCanSlideThumbPrev(rail.scrollLeft > 2);
-    setCanSlideThumbNext(rail.scrollLeft < maxScroll - 2);
-  };
-
-  const slideGalleryThumbnails = (direction: 'prev' | 'next') => {
-    const rail = galleryThumbnailRailRef.current;
-    if (!rail) return;
-    const distance = Math.max(rail.clientWidth * 0.72, 180);
-    rail.scrollBy({
-      left: direction === 'prev' ? -distance : distance,
+    const targetLeft = activeThumb.offsetLeft - (rail.clientWidth - activeThumb.clientWidth) / 2;
+    rail.scrollTo({
+      left: Math.max(targetLeft, 0),
       behavior: 'smooth',
     });
-  };
-
-  const snapGalleryToViewport = () => {
-    if (gallerySnapRafRef.current != null) {
-      cancelAnimationFrame(gallerySnapRafRef.current);
-    }
-    if (gallerySnapTimeoutRef.current != null) {
-      window.clearTimeout(gallerySnapTimeoutRef.current);
-    }
-
-    gallerySnapRafRef.current = window.requestAnimationFrame(() => {
-      const gallery = document.getElementById('project-detail-selector-gallery');
-      if (!gallery) return;
-
-      const targetTop = Math.max(gallery.getBoundingClientRect().top + window.scrollY, 0);
-      window.scrollTo({ top: targetTop, behavior: 'smooth' });
-
-      gallerySnapTimeoutRef.current = window.setTimeout(() => {
-        const currentGallery = document.getElementById('project-detail-selector-gallery');
-        if (!currentGallery) return;
-
-        const correctionTop = currentGallery.getBoundingClientRect().top + window.scrollY;
-        const delta = Math.abs(currentGallery.getBoundingClientRect().top);
-        if (delta > 2) {
-          window.scrollTo({ top: Math.max(correctionTop, 0), behavior: 'auto' });
-        }
-      }, 420);
-    });
-  };
-
-  const selectGalleryImage = (thumbIndex: number) => {
-    setSelectedGalleryIndex(thumbIndex);
-    snapGalleryToViewport();
-  };
-
-  useEffect(() => {
-    const rail = galleryThumbnailRailRef.current;
-    if (!rail) return;
-
-    const update = () => updateGalleryThumbSliderState();
-    update();
-    rail.addEventListener('scroll', update, { passive: true });
-    window.addEventListener('resize', update);
-
-    return () => {
-      rail.removeEventListener('scroll', update);
-      window.removeEventListener('resize', update);
-    };
-  }, [galleryThumbs.length]);
-
-  useEffect(() => {
-    const rail = galleryThumbnailRailRef.current;
-    if (!rail) return;
-    const activeThumb = rail.querySelector<HTMLElement>('.project-selector-thumbnail.is-selected');
-    activeThumb?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-    window.setTimeout(updateGalleryThumbSliderState, 260);
-  }, [selectedGalleryIndex]);
+  }, [carouselIndex]);
 
   // Scroll to initial image ───────────────────────────────────────────────────
   // Strategy:
@@ -192,14 +179,16 @@ const ProjectDetail = () => {
     if (!project) return;
     let cancelled = false;
 
-    const waitForImage = (img: HTMLImageElement) =>
-      img.complete && img.naturalWidth > 0
+    const waitForMedia = (media: HTMLElement) => {
+      if (!(media instanceof HTMLImageElement)) return Promise.resolve();
+      return media.complete && media.naturalWidth > 0
         ? Promise.resolve()
         : new Promise<void>((res) => {
             const done = () => res();
-            img.addEventListener('load', done, { once: true });
-            img.addEventListener('error', done, { once: true });
+            media.addEventListener('load', done, { once: true });
+            media.addEventListener('error', done, { once: true });
           });
+    };
 
     const scrollToTarget = async (idx: number) => {
       if (idx <= 0) {
@@ -207,22 +196,27 @@ const ProjectDetail = () => {
         return;
       }
 
-      if (idx >= designGoalInsertAfter && galleryImages.length > 0) {
-        setSelectedGalleryIndex(Math.min(idx - designGoalInsertAfter, galleryImages.length - 1));
+      if (idx >= DETAIL_STATIC_IMAGE_COUNT && carouselImages.length > 0) {
+        setCarouselState([
+          Math.min(idx - DETAIL_STATIC_IMAGE_COUNT, carouselImages.length - 1),
+          1,
+        ]);
       }
 
       const imgs = Array.from(
-        document.querySelectorAll<HTMLImageElement>('.project-gallery-item > img')
+        document.querySelectorAll<HTMLElement>('.project-gallery-item > [id^="detail-img-"]')
       ).slice(0, idx + 1);
 
-      await Promise.all(imgs.map(waitForImage));
+      await Promise.all(imgs.map(waitForMedia));
       if (cancelled) return;
 
       // Two rAF frames to ensure layout is settled
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = requestAnimationFrame(() => {
           if (cancelled) return;
-          const target = document.getElementById(`detail-img-${idx}`);
+          const target = idx >= DETAIL_STATIC_IMAGE_COUNT
+            ? document.getElementById('detail-carousel')
+            : document.getElementById(`detail-img-${idx}`);
           if (!(target instanceof HTMLElement)) return;
           const top = Math.max(target.getBoundingClientRect().top + window.scrollY - 40, 0);
           window.scrollTo({ top, behavior: 'smooth' });
@@ -251,22 +245,90 @@ const ProjectDetail = () => {
         cancelled = true;
         window.removeEventListener('detailRouteReady', onReady);
         if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
-        if (gallerySnapRafRef.current != null) cancelAnimationFrame(gallerySnapRafRef.current);
-        if (gallerySnapTimeoutRef.current != null) window.clearTimeout(gallerySnapTimeoutRef.current);
       };
     }
 
     return () => {
       cancelled = true;
       if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
-      if (gallerySnapRafRef.current != null) cancelAnimationFrame(gallerySnapRafRef.current);
-      if (gallerySnapTimeoutRef.current != null) window.clearTimeout(gallerySnapTimeoutRef.current);
     };
-  }, [designGoalInsertAfter, galleryImages.length, initialImageIndex, project?.images]);
+  }, [carouselImages.length, initialImageIndex, project?.images]);
 
   const scrollToTop = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const snapCarouselToViewport = () => {
+    const section = document.getElementById('detail-carousel');
+    if (!section) return;
+
+    if (carouselSnapRafRef.current != null) {
+      cancelAnimationFrame(carouselSnapRafRef.current);
+    }
+
+    const startY = window.scrollY;
+    const targetY = Math.max(startY + section.getBoundingClientRect().top, 0);
+    const distance = targetY - startY;
+    if (Math.abs(distance) <= 2) return;
+
+    const startedAt = performance.now();
+    const duration = 480;
+    const animateSnap = (now: number) => {
+      const progress = Math.min((now - startedAt) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      window.scrollTo(0, startY + distance * eased);
+
+      if (progress < 1) {
+        carouselSnapRafRef.current = requestAnimationFrame(animateSnap);
+      } else {
+        carouselSnapRafRef.current = null;
+      }
+    };
+
+    carouselSnapRafRef.current = requestAnimationFrame(animateSnap);
+  };
+
+  const showCarouselImage = (nextIndex: number, shouldSnap = true) => {
+    if (carouselImages.length <= 0) return;
+
+    if (shouldSnap) {
+      snapCarouselToViewport();
+    }
+
+    const normalizedIndex = ((nextIndex % carouselImages.length) + carouselImages.length) % carouselImages.length;
+    if (normalizedIndex === carouselIndex) return;
+
+    const directDistance = normalizedIndex - carouselIndex;
+    const wrappedDistance = directDistance > carouselImages.length / 2
+      ? directDistance - carouselImages.length
+      : directDistance < -carouselImages.length / 2
+        ? directDistance + carouselImages.length
+        : directDistance;
+    const direction: 1 | -1 = wrappedDistance >= 0 ? 1 : -1;
+
+    void preloadCarouselMedia(carouselImages[normalizedIndex]);
+    setCarouselState([normalizedIndex, direction]);
+    setIsCarouselSwitching(true);
+    if (carouselSwitchTimeoutRef.current != null) {
+      window.clearTimeout(carouselSwitchTimeoutRef.current);
+    }
+    carouselSwitchTimeoutRef.current = window.setTimeout(() => {
+      setIsCarouselSwitching(false);
+      carouselSwitchTimeoutRef.current = null;
+    }, CAROUSEL_SWITCH_DURATION_MS);
+  };
+
+  useEffect(() => () => {
+    if (carouselSnapRafRef.current != null) {
+      cancelAnimationFrame(carouselSnapRafRef.current);
+    }
+    if (carouselSwitchTimeoutRef.current != null) {
+      window.clearTimeout(carouselSwitchTimeoutRef.current);
+    }
+  }, []);
+
+  const showPreviousCarouselImage = () => void showCarouselImage(carouselIndex - 1);
+  const showNextCarouselImage = () => void showCarouselImage(carouselIndex + 1);
 
   // ─── Early return after hooks ───────────────────────────────────────────────
   if (!project) return null;
@@ -360,126 +422,153 @@ const ProjectDetail = () => {
           </motion.section>
         )}
 
-        {galleryImages.length > 0 && (
+        {carouselImages.length > 0 && activeCarouselImage && (
           <motion.section
-            id="project-detail-selector-gallery"
-            className="project-selector-gallery"
+            id="detail-carousel"
+            className="project-carousel"
+            tabIndex={0}
+            aria-label={`${project.title} image carousel`}
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-100px' }}
             transition={{ duration: 0.7 }}
+            onKeyDown={(event) => {
+              if (event.key === 'ArrowLeft') {
+                event.preventDefault();
+                showPreviousCarouselImage();
+              }
+              if (event.key === 'ArrowRight') {
+                event.preventDefault();
+                showNextCarouselImage();
+              }
+            }}
           >
-            <AnimatePresence mode="wait">
-              <motion.div
-                key={galleryImages[selectedGalleryIndex]}
-                className={`project-gallery-item project-selector-gallery-main ${isVideoSrc(galleryImages[selectedGalleryIndex]) ? 'project-gallery-item-video' : ''}`}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-              >
-                {isVideoSrc(galleryImages[selectedGalleryIndex]) ? (
-                  <video
-                    id={`detail-img-${designGoalInsertAfter + selectedGalleryIndex}`}
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
-                    src={galleryImages[selectedGalleryIndex]}
-                    className="detail-video"
-                    style={{ width: '100%', display: 'block' }}
-                  />
-                ) : (
-                  <img
-                    id={`detail-img-${designGoalInsertAfter + selectedGalleryIndex}`}
-                    src={galleryImages[selectedGalleryIndex]}
-                    alt={`${project.title} gallery image ${selectedGalleryIndex + 1}`}
-                    loading="lazy"
+            <div className="project-carousel-main">
+              <AnimatePresence initial={false} custom={carouselDirection} mode="popLayout">
+                <motion.div
+                  key={`${activeCarouselImage}-${carouselIndex}`}
+                  custom={carouselDirection}
+                  className={`project-gallery-item project-carousel-slide ${isVideoSrc(activeCarouselImage) ? 'project-gallery-item-video' : ''}`}
+                  variants={carouselMediaVariants}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                >
+                  {isVideoSrc(activeCarouselImage) ? (
+                    <video
+                      id={`detail-img-${DETAIL_STATIC_IMAGE_COUNT + carouselIndex}`}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      src={activeCarouselImage}
+                      className="detail-video"
+                    />
+                  ) : (
+                    <img
+                      id={`detail-img-${DETAIL_STATIC_IMAGE_COUNT + carouselIndex}`}
+                      src={activeCarouselImage}
+                      alt={`${project.title} image ${DETAIL_STATIC_IMAGE_COUNT + carouselIndex + 1}`}
+                      loading={carouselIndex <= 1 ? 'eager' : 'lazy'}
+                      decoding="async"
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {isCarouselSwitching && (
+                  <motion.div
+                    key={`carousel-sheen-${carouselIndex}`}
+                    className="project-carousel-sheen"
+                    initial={{ opacity: 0, x: '-18%', skewX: -12 }}
+                    animate={{ opacity: [0, 0.08, 0.03, 0], x: ['-18%', '6%', '24%', '42%'] }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
                   />
                 )}
-              </motion.div>
-            </AnimatePresence>
+              </AnimatePresence>
 
-            <div className="project-selector-thumbnail-wrap">
-              <div className="project-selector-thumbnail-shell">
-                <motion.button
-                  type="button"
-                  className="project-selector-thumbnail-arrow"
-                  onClick={() => slideGalleryThumbnails('prev')}
-                  disabled={!canSlideThumbPrev}
-                  aria-label="Scroll previous gallery thumbnails"
-                  whileHover={canSlideThumbPrev ? { opacity: 1, x: -1 } : undefined}
-                  whileTap={canSlideThumbPrev ? { scale: 0.94, x: -1 } : undefined}
-                >
-                  <ArrowLeft size={15} strokeWidth={2.2} />
-                </motion.button>
+              {carouselImages.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    className="project-carousel-nav project-carousel-nav-prev"
+                    onClick={showPreviousCarouselImage}
+                    aria-label="Previous project image"
+                  >
+                    <ArrowLeft size={18} strokeWidth={2.2} />
+                  </button>
+                  <button
+                    type="button"
+                    className="project-carousel-nav project-carousel-nav-next"
+                    onClick={showNextCarouselImage}
+                    aria-label="Next project image"
+                  >
+                    <ArrowRight size={18} strokeWidth={2.2} />
+                  </button>
+                </>
+              )}
+            </div>
 
-                <div
-                  className="project-selector-thumbnail-rail thumbnail-rail"
-                  ref={galleryThumbnailRailRef}
-                >
-                  {galleryThumbs.map((thumbSrc, thumbIndex) => {
-                    const isSelected = selectedGalleryIndex === thumbIndex;
-                    return (
-                      <motion.button
-                        key={`${thumbSrc}-${thumbIndex}`}
-                        type="button"
-                        className={`project-selector-thumbnail${isSelected ? ' is-selected' : ''}`}
-                        onClick={() => selectGalleryImage(thumbIndex)}
-                        aria-label={`Show gallery image ${thumbIndex + 1}`}
-                        whileHover={{
-                          opacity: 1,
-                          y: -1,
-                          borderColor: 'rgba(255,255,255,0.18)',
-                          boxShadow: '0 12px 24px rgba(0,0,0,0.24)',
-                        }}
-                        whileTap={{ scale: 0.992 }}
-                        animate={{
-                          opacity: isSelected ? 1 : 0.58,
-                          borderColor: isSelected ? 'rgba(255,107,0,0.85)' : 'rgba(255,255,255,0.1)',
-                          boxShadow: isSelected
-                            ? '0 18px 34px rgba(0,0,0,0.34), 0 0 0 1px rgba(255,107,0,0.16)'
-                            : '0 0 0 rgba(0,0,0,0)',
-                          y: isSelected ? -2 : 0,
-                        }}
-                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-                      >
-                        {!isVideoSrc(galleryThumbs[thumbIndex]) && (
-                          <motion.img
-                            src={thumbSrc}
-                            alt=""
-                            animate={{
-                              scale: isSelected ? 1.022 : 1,
-                              opacity: 1,
-                            }}
-                            transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-                            loading="lazy"
-                            decoding="async"
-                            draggable={false}
-                          />
-                        )}
-                        <span className="project-selector-thumbnail-index">
-                          {String(thumbIndex + 1).padStart(2, '0')}
-                        </span>
-                      </motion.button>
-                    );
-                  })}
-                </div>
-
-                <motion.button
-                  type="button"
-                  className="project-selector-thumbnail-arrow project-selector-thumbnail-arrow-next"
-                  onClick={() => slideGalleryThumbnails('next')}
-                  disabled={!canSlideThumbNext}
-                  aria-label="Scroll next gallery thumbnails"
-                  whileHover={canSlideThumbNext ? { opacity: 1, x: 1 } : undefined}
-                  whileTap={canSlideThumbNext ? { scale: 0.94, x: 1 } : undefined}
-                >
-                  <ArrowLeft size={15} strokeWidth={2.2} />
-                </motion.button>
+            <div className="project-carousel-dock">
+              <div className="project-carousel-thumbs" ref={carouselThumbRailRef}>
+                {carouselImages.map((img, thumbIndex) => {
+                  const thumbSrc = carouselThumbs[thumbIndex] || img;
+                  const isSelected = carouselIndex === thumbIndex;
+                  return (
+                    <button
+                      key={`${thumbSrc}-${thumbIndex}`}
+                      type="button"
+                      className={`project-carousel-thumb${isSelected ? ' is-selected' : ''}`}
+                      onPointerDown={snapCarouselToViewport}
+                      onClick={() => void showCarouselImage(thumbIndex, false)}
+                      aria-label={`Show image ${DETAIL_STATIC_IMAGE_COUNT + thumbIndex + 1}`}
+                      aria-pressed={isSelected}
+                    >
+                      {!isVideoSrc(thumbSrc) ? (
+                        <img src={thumbSrc} alt="" loading="lazy" decoding="async" draggable={false} />
+                      ) : (
+                        <span className="project-carousel-video-thumb">Video</span>
+                      )}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </motion.section>
+        )}
+
+        {carouselImages.length > 0 && (
+          <div className="project-mobile-gallery" aria-label={`${project.title} additional images`}>
+            {carouselImages.map((img, imageIndex) => {
+              const isVideo = isVideoSrc(img);
+              return (
+                <section
+                  key={`mobile-${img}-${imageIndex}`}
+                  className={`project-gallery-item ${isVideo ? 'project-gallery-item-video' : ''}`}
+                >
+                  {isVideo ? (
+                    <video
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      src={img}
+                      className="detail-video"
+                    />
+                  ) : (
+                    <img
+                      src={img}
+                      alt={`${project.title} image ${DETAIL_STATIC_IMAGE_COUNT + imageIndex + 1}`}
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
+                </section>
+              );
+            })}
+          </div>
         )}
 
       </div>
@@ -530,6 +619,7 @@ const ProjectDetail = () => {
         {showBackToTop && (
           <motion.button
             key="back-to-top"
+            className="project-back-to-top"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 20 }}
@@ -569,7 +659,7 @@ const ProjectDetail = () => {
             >
               <ArrowUp size={14} strokeWidth={2.5} />
             </motion.span>
-            <span style={{
+            <span className="project-back-to-top-label" style={{
               fontFamily: 'Oswald, sans-serif',
               fontSize: '12px',
               fontWeight: 600,

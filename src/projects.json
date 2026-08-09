@@ -9,6 +9,8 @@
     "overview": "Concept design supporting high-end cinematic production, defining cohesive visual direction and production-ready assets for animation and FX.",
     "thumbnail": "/assets/01%20-%20Leviathan%20RCG/01cffd_9782f6a882b3427f9df050b70f60df77~mv2.jpg",
     "video": "/assets/videos/LeviathanRCG_1080p.mp4",
+    "videoStartTime": 3,
+    "videoThumbnail": "/assets/video-thumbnails/leviathan-rcg.jpg",
     "thumbs": [
       "/assets/01%20-%20Leviathan%20RCG/thumbs/01cffd_515d48cfa04643f0a78fae099d788734~mv2.jpg",
       "/assets/01%20-%20Leviathan%20RCG/thumbs/01cffd_55c2d3c6921148a1ba09534828ac38d1~mv2.jpg",
@@ -95,7 +97,9 @@
     "folder": "05 - Leviathan Icebreaker",
     "thumbnail": "/assets/05%20-%20Leviathan%20Icebreaker/Icebreaker_YogiSoelastama_03.jpg",
     "video": "/assets/videos/Icebreaker_Detail_1080p.mp4",
+    "videoThumbnail": "/assets/video-thumbnails/icebreaker-main.jpg",
     "detailVideo": "/assets/videos/Icebreaker-YogiSoelastama_1080p.mp4",
+    "detailVideoThumbnail": "/assets/video-thumbnails/icebreaker-detail.jpg",
     "images": [
       "/assets/05%20-%20Leviathan%20Icebreaker/01cffd_66df69aa3ecd4fd3956ecfe4aa3d1bb1f000.jpg",
       "/assets/05%20-%20Leviathan%20Icebreaker/01cffd_fe6fad027bba48158493ff23036f4a73f003.jpg",
@@ -134,13 +138,14 @@
     "id": "07 - Long Exile",
     "title": "Long Exile",
     "folder": "07 - Long Exile",
-    "thumbnail": "/assets/07%20-%20Long%20Exile/01cffd_2e79b953d9e9436e8ad2986a268d0dd7~mv2.jpg",
+    "thumbnail": "/assets/07%20-%20Long%20Exile/tank03_yogisoelastama.jpg",
+    "coverImage": "/assets/07%20-%20Long%20Exile/tank03_yogisoelastama.jpg",
     "images": [
+      "/assets/07%20-%20Long%20Exile/tank03_yogisoelastama.jpg",
       "/assets/07%20-%20Long%20Exile/01cffd_2e79b953d9e9436e8ad2986a268d0dd7~mv2.jpg",
       "/assets/07%20-%20Long%20Exile/01cffd_bb4259cd80ae4d8e8881c236a3a696c6~mv2.jpg",
       "/assets/07%20-%20Long%20Exile/2.jpg",
-      "/assets/07%20-%20Long%20Exile/APC_Interior_YogiSoelastama.jpg",
-      "/assets/07%20-%20Long%20Exile/tank03_yogisoelastama.jpg"
+      "/assets/07%20-%20Long%20Exile/APC_Interior_YogiSoelastama.jpg"
     ]
   },
   {
@@ -149,7 +154,9 @@
     "folder": "08 - MTG Dawn of Phyrexian Invasion",
     "thumbnail": "/assets/08%20-%20MTG%20Dawn%20of%20Phyrexian%20Invasion/01cffd_6094a6ca7f184bfca3d30419652a92cef003.jpg",
     "video": "/assets/videos/MTG_DawnOfPhyrexia_720p.mp4",
+    "videoThumbnail": "/assets/video-thumbnails/mtg-main.jpg",
     "detailVideo": "/assets/videos/JUDO_TimeMachine_MTG_720p.mp4",
+    "detailVideoThumbnail": "/assets/video-thumbnails/mtg-detail.jpg",
     "images": [
       "/assets/08%20-%20MTG%20Dawn%20of%20Phyrexian%20Invasion/01cffd_6094a6ca7f184bfca3d30419652a92cef003.jpg",
       "/assets/08%20-%20MTG%20Dawn%20of%20Phyrexian%20Invasion/01cffd_f47bba11ecee40f19c88b19b42dc5a4df000.jpg",
@@ -176,12 +183,15 @@
     "id": "10 - Godkiller",
     "title": "Godkiller",
     "folder": "10 - Godkiller",
-    "thumbnail": "/assets/10%20-%20Godkiller/01cffd_0f7d0fc7ceb24d9898bdc9cbe3b43564~mv2.jpg",
+    "thumbnail": "/assets/10%20-%20Godkiller/01cffd_46430f86eee64cf798977e83eb0b4297~mv2.jpg",
+    "coverImage": "/assets/10%20-%20Godkiller/01cffd_46430f86eee64cf798977e83eb0b4297~mv2.jpg",
+    "thumbFolder": "/assets/10%20-%20Godkiller/thumbs",
     "images": [
+      "/assets/10%20-%20Godkiller/01cffd_46430f86eee64cf798977e83eb0b4297~mv2.jpg",
+      "/assets/10%20-%20Godkiller/01cffd_e226736b5db54fe3852fafad649dce21~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_0f7d0fc7ceb24d9898bdc9cbe3b43564~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_15d2d894635f439f95facc613aac3630~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_2c429b50d15b460e8b5e75b012025f8d~mv2.jpg",
-      "/assets/10%20-%20Godkiller/01cffd_46430f86eee64cf798977e83eb0b4297~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_60b2cea4d1b64626829098ad16f2e868~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_6a8eb5028c0345a987e999c9399aaa1f~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_796f0f54f1a34d9bb31748dc676093a6~mv2.jpg",
@@ -193,7 +203,6 @@
       "/assets/10%20-%20Godkiller/01cffd_c904e237c9b44955bc77b75e02d75b2a~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_c9279e5a6d5b4ad4a474522b885216d6~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_d5fe0d54f1734ad9b1398f73326e8904~mv2.jpg",
-      "/assets/10%20-%20Godkiller/01cffd_e226736b5db54fe3852fafad649dce21~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_e9e8d39d9e9c4774a1a3f6c864b049a6~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_ead2fb7854c8492093b4a7248fa1328e~mv2.jpg",
       "/assets/10%20-%20Godkiller/01cffd_fd21a443310840218ad35c601b729ef2~mv2.jpg"

@@ -1,8 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useParams, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import projectsData from './projects.json';
+import {
+  getLightweightVideoSource,
+  getResponsiveImageCandidate,
+  getResponsiveImageProps,
+  getResponsiveVideoSource,
+} from './media';
 
 const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -60,50 +66,105 @@ const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
 };
 
 const isVideoSrc = (src: string) => src.toLowerCase().endsWith('.mp4') || src.toLowerCase().endsWith('.webm');
+
+const ViewportAutoplayVideo = ({
+  src,
+  poster,
+  id,
+  className,
+  style,
+}: {
+  src: string;
+  poster?: string;
+  id?: string;
+  className?: string;
+  style?: React.CSSProperties;
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(() => !document.hidden);
+  const shouldLoad = isNearViewport && isPageVisible;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsNearViewport(entry.isIntersecting);
+    }, { rootMargin: '400px 0px', threshold: 0.01 });
+    observer.observe(video);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const updateVisibility = () => setIsPageVisible(!document.hidden);
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || shouldLoad) return;
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+  }, [shouldLoad]);
+
+  return (
+    <video
+      ref={videoRef}
+      id={id}
+      autoPlay={shouldLoad}
+      muted
+      loop
+      playsInline
+      preload={shouldLoad ? 'metadata' : 'none'}
+      poster={poster}
+      src={shouldLoad ? getResponsiveVideoSource(src) : undefined}
+      className={className}
+      style={style}
+    />
+  );
+};
+
 const DETAIL_STATIC_IMAGE_COUNT = 2;
-const CAROUSEL_SWITCH_DURATION_MS = 900;
+const DETAIL_THUMBNAIL_WINDOW_RADIUS = 4;
 
 const carouselMediaVariants = {
   enter: (direction: 1 | -1) => ({
     opacity: 0,
-    x: direction * 26,
-    y: 12,
-    scale: 1.045,
-    rotate: direction * 0.65,
-    filter: 'blur(14px) brightness(1.08) saturate(1.05)',
+    x: direction * 18,
+    scale: 1.012,
   }),
   center: {
     opacity: 1,
     x: 0,
-    y: 0,
     scale: 1,
-    rotate: 0,
-    filter: 'blur(0px) brightness(1) saturate(1)',
     transition: {
-      type: 'spring' as const,
-      stiffness: 70,
-      damping: 18,
-      mass: 0.9,
+      duration: 0.42,
+      ease: [0.22, 1, 0.36, 1] as const,
     },
   },
   exit: (direction: 1 | -1) => ({
     opacity: 0,
-    x: direction * -18,
-    y: -8,
-    scale: 0.992,
-    rotate: direction * -0.4,
-    filter: 'blur(12px) brightness(0.92)',
+    x: direction * -12,
+    scale: 0.996,
     transition: {
-      duration: 0.45,
-      ease: 'easeInOut' as const,
+      duration: 0.28,
+      ease: [0.4, 0, 0.2, 1] as const,
     },
   }),
 };
 
+const carouselMediaPreloadCache = new Map<string, Promise<void>>();
+
 const preloadCarouselMedia = (src: string) => {
   if (isVideoSrc(src)) return Promise.resolve();
+  const responsiveSrc = getResponsiveImageCandidate(src);
+  if (!responsiveSrc) return Promise.resolve();
+  const cachedPreload = carouselMediaPreloadCache.get(responsiveSrc);
+  if (cachedPreload) return cachedPreload;
 
-  return new Promise<void>((resolve) => {
+  const preload = new Promise<void>((resolve) => {
     const image = new Image();
     const done = () => resolve();
     image.onload = async () => {
@@ -115,8 +176,632 @@ const preloadCarouselMedia = (src: string) => {
       done();
     };
     image.onerror = done;
-    image.src = src;
+    image.src = responsiveSrc;
   });
+  carouselMediaPreloadCache.set(responsiveSrc, preload);
+  return preload;
+};
+
+const useMobileDetailLayout = () => {
+  const query = '(hover: none), (max-width: 1280px)';
+  const [isMobileDetailLayout, setIsMobileDetailLayout] = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia(query).matches
+  ));
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(query);
+    const updateLayout = () => setIsMobileDetailLayout(mediaQuery.matches);
+    updateLayout();
+    mediaQuery.addEventListener('change', updateLayout);
+    return () => mediaQuery.removeEventListener('change', updateLayout);
+  }, []);
+
+  return isMobileDetailLayout;
+};
+
+const getProjectCoverImage = (project?: {
+  videoThumbnail?: string;
+  coverImage?: string;
+  images?: string[];
+  thumbnail?: string;
+}) => (
+  project?.videoThumbnail ||
+  project?.coverImage ||
+  (Array.isArray(project?.images) && project.images.length
+    ? project.images[project.images.length - 1]
+    : project?.thumbnail) ||
+  ''
+);
+
+const nextProjectCoverCache = new Map<string, Promise<void>>();
+const nextProjectsPool = projectsData.slice(1);
+const nextProjectMediaDwellMs = 1800;
+
+const getNextProjectPreviewImages = (project: (typeof projectsData)[number]) => {
+  const cover = getProjectCoverImage(project);
+  const galleryImages = Array.isArray(project.images) ? [...project.images].reverse() : [];
+  return [cover, ...galleryImages.filter((image) => image && image !== cover)].filter(Boolean);
+};
+
+const preloadNextProjectCover = (
+  src: string,
+  targetWidth: number,
+  priority: 'high' | 'low',
+) => {
+  const responsiveSrc = getResponsiveImageCandidate(src, targetWidth);
+  if (!responsiveSrc) return Promise.resolve();
+
+  const cachedPreload = nextProjectCoverCache.get(responsiveSrc);
+  if (cachedPreload) return cachedPreload;
+
+  const preload = new Promise<void>((resolve) => {
+    const image = new Image();
+    image.decoding = 'async';
+    image.loading = 'eager';
+    image.fetchPriority = priority;
+
+    const done = () => resolve();
+    image.onload = async () => {
+      try {
+        await image.decode();
+      } catch {
+        // A loaded image can still be displayed when decode() is unavailable.
+      }
+      done();
+    };
+    image.onerror = done;
+    image.src = responsiveSrc;
+  });
+
+  nextProjectCoverCache.set(responsiveSrc, preload);
+  return preload;
+};
+
+const NextProjectPreviewVideo = ({
+  src,
+  poster,
+  startTime = 0,
+}: {
+  src: string;
+  poster: string;
+  startTime?: number;
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const lightweightSrc = getLightweightVideoSource(src);
+  const videoSrc = startTime > 0 ? `${lightweightSrc}#t=${startTime}` : lightweightSrc;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    let previousTime = video.currentTime;
+    const attemptPlayback = () => {
+      if (document.hidden) return;
+      const playback = video.play();
+      playback?.catch(() => {
+        setIsPlaying(false);
+      });
+    };
+    const retryTimeouts = [0, 400, 1200].map((delay) => (
+      window.setTimeout(attemptPlayback, delay)
+    ));
+    const handleCanPlay = () => attemptPlayback();
+    const watchdogId = window.setInterval(() => {
+      const currentTime = video.currentTime;
+      const isAdvancing = currentTime > previousTime + 0.02 || currentTime < previousTime;
+      setIsPlaying(
+        !video.paused &&
+        !video.ended &&
+        isAdvancing &&
+        video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA,
+      );
+      if (video.paused && !document.hidden) attemptPlayback();
+      previousTime = currentTime;
+    }, 700);
+
+    video.addEventListener('loadeddata', handleCanPlay);
+    video.addEventListener('canplay', handleCanPlay);
+
+    return () => {
+      retryTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      window.clearInterval(watchdogId);
+      video.removeEventListener('loadeddata', handleCanPlay);
+      video.removeEventListener('canplay', handleCanPlay);
+      video.pause();
+    };
+  }, [videoSrc]);
+
+  return (
+    <motion.video
+      ref={videoRef}
+      src={videoSrc}
+      poster={poster}
+      autoPlay
+      muted
+      loop
+      playsInline
+      preload="metadata"
+      className="project-next-video"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: isPlaying ? 1 : 0 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+      onPlaying={() => setIsPlaying(true)}
+      onWaiting={() => setIsPlaying(false)}
+      onStalled={() => setIsPlaying(false)}
+      onPause={() => setIsPlaying(false)}
+      onError={() => setIsPlaying(false)}
+    />
+  );
+};
+
+const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string }) => {
+  const isMobileDetailLayout = useMobileDetailLayout();
+  const nextProjects = useMemo(() => {
+    const currentProjectIndex = nextProjectsPool.findIndex((item) => item.id === currentProjectId);
+    return Array.from({ length: 3 }, (_, offset) => (
+      nextProjectsPool[(currentProjectIndex + offset + 1) % nextProjectsPool.length]
+    ));
+  }, [currentProjectId]);
+  const [activeProjectId, setActiveProjectId] = useState(nextProjects[0]?.id ?? '');
+  const [engagedDesktopProjectId, setEngagedDesktopProjectId] = useState<string | null>(null);
+  const [desktopMediaState, setDesktopMediaState] = useState({
+    projectId: nextProjects[0]?.id ?? '',
+    imageIndex: 0,
+    sequence: 0,
+    showVideo: false,
+  });
+  const [isPreviewPageVisible, setIsPreviewPageVisible] = useState(() => !document.hidden);
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const previewRef = useRef<HTMLAnchorElement | null>(null);
+  const previewRequestRef = useRef(0);
+  const mobileProjectRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+  const mobileViewportCandidatesRef = useRef(new Set<number>());
+  const isMobileBottomOverrideActiveRef = useRef(false);
+  const [activeMobileProjectId, setActiveMobileProjectId] = useState<string | null>(
+    nextProjects[0]?.id ?? null,
+  );
+  const [isMobileNextSectionVisible, setIsMobileNextSectionVisible] = useState(false);
+
+  const activeProject = (
+    nextProjects.find((item) => item.id === activeProjectId) ||
+    nextProjects[0]
+  );
+  const activeCover = getProjectCoverImage(activeProject);
+  const activePreviewImages = useMemo(
+    () => activeProject ? getNextProjectPreviewImages(activeProject) : [],
+    [activeProject],
+  );
+  const activePreviewImage = (
+    desktopMediaState.projectId === activeProject?.id
+      ? activePreviewImages[desktopMediaState.imageIndex]
+      : activeCover
+  ) || activeCover;
+  const activeVideo = activeProject && 'video' in activeProject ? activeProject.video : undefined;
+  const activeVideoStartTime = (
+    activeProject && 'videoStartTime' in activeProject ? activeProject.videoStartTime : 0
+  ) || 0;
+  const shouldShowDesktopVideo = Boolean(
+    activeVideo &&
+    isPreviewPageVisible &&
+    engagedDesktopProjectId === activeProject?.id &&
+    desktopMediaState.projectId === activeProject?.id &&
+    desktopMediaState.showVideo
+  );
+
+  const getPreviewTargetWidth = () => {
+    const previewWidth = previewRef.current?.clientWidth || window.innerWidth;
+    return Math.min(
+      2560,
+      Math.ceil(previewWidth * Math.min(window.devicePixelRatio || 1, 2)),
+    );
+  };
+
+  const selectPreview = async (nextProject: (typeof projectsData)[number]) => {
+    const requestId = ++previewRequestRef.current;
+    setEngagedDesktopProjectId(nextProject.id);
+    setDesktopMediaState({
+      projectId: nextProject.id,
+      imageIndex: 0,
+      sequence: 0,
+      showVideo: false,
+    });
+
+    if (nextProject.id === activeProjectId) return;
+
+    const cover = getProjectCoverImage(nextProject);
+    await preloadNextProjectCover(cover, getPreviewTargetWidth(), 'high');
+    if (requestId !== previewRequestRef.current) return;
+    setActiveProjectId(nextProject.id);
+  };
+
+  const stopPreview = (projectId: string) => {
+    previewRequestRef.current += 1;
+    setEngagedDesktopProjectId((currentId) => currentId === projectId ? null : currentId);
+    setDesktopMediaState((currentState) => (
+      currentState.projectId === projectId
+        ? { ...currentState, imageIndex: 0, sequence: currentState.sequence + 1, showVideo: false }
+        : currentState
+    ));
+  };
+
+  const resolveActiveMobileProject = useCallback(() => {
+    if (isMobileBottomOverrideActiveRef.current) {
+      setActiveMobileProjectId(nextProjects[nextProjects.length - 1]?.id ?? null);
+      return;
+    }
+
+    const viewportCenter = window.innerHeight / 2;
+    let nearestIndex: number | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    mobileViewportCandidatesRef.current.forEach((projectIndex) => {
+      const projectElement = mobileProjectRefs.current[projectIndex];
+      if (!projectElement) return;
+
+      const bounds = projectElement.getBoundingClientRect();
+      const distance = Math.abs(bounds.top + bounds.height / 2 - viewportCenter);
+      if (distance >= nearestDistance) return;
+
+      nearestDistance = distance;
+      nearestIndex = projectIndex;
+    });
+
+    if (nearestIndex == null) {
+      setActiveMobileProjectId(null);
+      return;
+    }
+
+    const nextProjectId = nextProjects[nearestIndex]?.id ?? null;
+    setActiveMobileProjectId((currentProjectId) => {
+      const currentIndex = nextProjects.findIndex((project) => project.id === currentProjectId);
+      const currentElement = currentIndex >= 0 ? mobileProjectRefs.current[currentIndex] : null;
+      if (!currentElement || !mobileViewportCandidatesRef.current.has(currentIndex)) {
+        return nextProjectId;
+      }
+
+      const currentBounds = currentElement.getBoundingClientRect();
+      const currentDistance = Math.abs(
+        currentBounds.top + currentBounds.height / 2 - viewportCenter,
+      );
+      return currentDistance <= nearestDistance + 24 ? currentProjectId : nextProjectId;
+    });
+  }, [nextProjects]);
+
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+
+      const targetWidth = getPreviewTargetWidth();
+      nextProjects.forEach((nextProject, index) => {
+        void preloadNextProjectCover(
+          getProjectCoverImage(nextProject),
+          targetWidth,
+          index === 0 ? 'high' : 'low',
+        );
+      });
+      observer.disconnect();
+    }, { rootMargin: '600px 0px', threshold: 0.01 });
+
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [nextProjects]);
+
+  useEffect(() => {
+    const updateVisibility = () => setIsPreviewPageVisible(!document.hidden);
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
+
+  useEffect(() => {
+    if (
+      isMobileDetailLayout ||
+      !isPreviewPageVisible ||
+      !activeProject ||
+      engagedDesktopProjectId !== activeProject.id ||
+      desktopMediaState.projectId !== activeProject.id
+    ) {
+      return;
+    }
+
+    if (activeVideo && desktopMediaState.showVideo) return;
+    if (!activeVideo && activePreviewImages.length <= 1) return;
+
+    let cancelled = false;
+    const nextImageIndex = activeVideo
+      ? 0
+      : (desktopMediaState.imageIndex + 1) % activePreviewImages.length;
+    const nextImagePreload = activeVideo
+      ? Promise.resolve()
+      : preloadNextProjectCover(
+          activePreviewImages[nextImageIndex],
+          getPreviewTargetWidth(),
+          'low',
+        );
+
+    const advanceTimeout = window.setTimeout(async () => {
+      await nextImagePreload;
+      if (cancelled) return;
+
+      setDesktopMediaState((currentState) => {
+        if (
+          currentState.projectId !== activeProject.id ||
+          engagedDesktopProjectId !== activeProject.id
+        ) {
+          return currentState;
+        }
+
+        return activeVideo
+          ? { ...currentState, showVideo: true }
+          : {
+              ...currentState,
+              imageIndex: nextImageIndex,
+              sequence: currentState.sequence + 1,
+            };
+      });
+    }, nextProjectMediaDwellMs);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(advanceTimeout);
+    };
+  }, [
+    activePreviewImages,
+    activeProject,
+    activeVideo,
+    desktopMediaState,
+    engagedDesktopProjectId,
+    isMobileDetailLayout,
+    isPreviewPageVisible,
+  ]);
+
+  useEffect(() => {
+    if (!isMobileDetailLayout) return;
+
+    let resolveFrameId: number | null = null;
+    const viewportInset = Math.round(window.innerHeight * 0.42);
+    const queueActiveProjectResolution = () => {
+      if (resolveFrameId !== null) window.cancelAnimationFrame(resolveFrameId);
+      resolveFrameId = window.requestAnimationFrame(resolveActiveMobileProject);
+    };
+
+    const centerObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const projectIndex = Number((entry.target as HTMLElement).dataset.mobileProjectIndex);
+        if (!Number.isInteger(projectIndex)) return;
+
+        if (entry.isIntersecting) {
+          mobileViewportCandidatesRef.current.add(projectIndex);
+        } else {
+          mobileViewportCandidatesRef.current.delete(projectIndex);
+        }
+      });
+      queueActiveProjectResolution();
+    }, {
+      rootMargin: `-${viewportInset}px 0px -${viewportInset}px 0px`,
+      threshold: [0, 0.01, 0.5, 1],
+    });
+
+    const bottomObserver = new IntersectionObserver(([entry]) => {
+      if (!entry) return;
+
+      const wasBottomOverrideActive = isMobileBottomOverrideActiveRef.current;
+      if (!wasBottomOverrideActive && entry.intersectionRatio >= 0.82) {
+        isMobileBottomOverrideActiveRef.current = true;
+      } else if (wasBottomOverrideActive && entry.intersectionRatio <= 0.68) {
+        isMobileBottomOverrideActiveRef.current = false;
+      }
+
+      if (wasBottomOverrideActive === isMobileBottomOverrideActiveRef.current) return;
+      if (isMobileBottomOverrideActiveRef.current) {
+        setActiveMobileProjectId(nextProjects[nextProjects.length - 1]?.id ?? null);
+      } else {
+        queueActiveProjectResolution();
+      }
+    }, {
+      threshold: [0, 0.68, 0.82, 1],
+    });
+
+    mobileProjectRefs.current.forEach((item) => item && centerObserver.observe(item));
+    const lastProjectElement = mobileProjectRefs.current[nextProjects.length - 1];
+    if (lastProjectElement) bottomObserver.observe(lastProjectElement);
+    queueActiveProjectResolution();
+
+    return () => {
+      centerObserver.disconnect();
+      bottomObserver.disconnect();
+      mobileViewportCandidatesRef.current.clear();
+      isMobileBottomOverrideActiveRef.current = false;
+      if (resolveFrameId !== null) window.cancelAnimationFrame(resolveFrameId);
+    };
+  }, [isMobileDetailLayout, nextProjects, resolveActiveMobileProject]);
+
+  useEffect(() => {
+    if (!isMobileDetailLayout) {
+      setIsMobileNextSectionVisible(false);
+      return;
+    }
+
+    const section = sectionRef.current;
+    if (!section) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsMobileNextSectionVisible(entry.isIntersecting);
+    }, { threshold: 0.04 });
+
+    observer.observe(section);
+    return () => observer.disconnect();
+  }, [isMobileDetailLayout]);
+
+  if (!activeProject || !activeCover) return null;
+
+  if (isMobileDetailLayout) {
+    return (
+      <motion.section
+        ref={sectionRef}
+        className="project-next-section project-next-section-mobile"
+        aria-labelledby="next-projects-title"
+        initial={{ opacity: 0, y: 24 }}
+        whileInView={{ opacity: 1, y: 0 }}
+        viewport={{ once: true, margin: '-80px' }}
+        transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+      >
+        <div className="project-next-mobile-heading">
+          <span id="next-projects-title" className="project-next-kicker">
+            Next projects
+          </span>
+        </div>
+        <nav className="project-next-mobile-list" aria-label="Next projects">
+          {nextProjects.map((nextProject, index) => {
+            const cover = getProjectCoverImage(nextProject);
+            const isActive = nextProject.id === activeMobileProjectId;
+            const mobileVideo = 'video' in nextProject ? nextProject.video : undefined;
+            const mobileVideoStartTime = (
+              'videoStartTime' in nextProject ? nextProject.videoStartTime : 0
+            ) || 0;
+            const shouldPlayMobileVideo = Boolean(
+              mobileVideo &&
+              isActive &&
+              isMobileNextSectionVisible &&
+              isPreviewPageVisible
+            );
+
+            return (
+              <Link
+                key={nextProject.id}
+                ref={(node) => {
+                  mobileProjectRefs.current[index] = node;
+                }}
+                to={`/project/${nextProject.id}`}
+                state={{ initialImageIndex: 0 }}
+                className={`mobile-home-project-thumbnail project-next-mobile-card${isActive ? ' is-viewport-active' : ''}`}
+                data-mobile-project-index={index}
+                data-viewport-active={isActive ? 'true' : 'false'}
+                aria-label={`Open ${nextProject.title} project`}
+              >
+                <div className="mobile-home-project-media" aria-hidden="true">
+                  <img
+                    src={cover}
+                    {...getResponsiveImageProps(cover, '100vw')}
+                    alt=""
+                    className="mobile-home-project-media-element"
+                    loading="lazy"
+                    decoding="async"
+                    draggable={false}
+                  />
+                  <AnimatePresence>
+                    {shouldPlayMobileVideo && mobileVideo && (
+                      <NextProjectPreviewVideo
+                        key={`${nextProject.id}-${mobileVideo}`}
+                        src={mobileVideo}
+                        poster={cover}
+                        startTime={mobileVideoStartTime}
+                      />
+                    )}
+                  </AnimatePresence>
+                </div>
+                <span className="mobile-home-project-copy" aria-hidden={!isActive}>
+                  <span className="mobile-home-project-divider" aria-hidden="true" />
+                  <span className="mobile-home-project-title">
+                    {nextProject.title}
+                  </span>
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+      </motion.section>
+    );
+  }
+
+  return (
+    <motion.section
+      ref={sectionRef}
+      className="project-next-section"
+      aria-labelledby="next-projects-title"
+      initial={{ opacity: 0, y: 24 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: '-80px' }}
+      transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+    >
+      <div className="project-next-grid">
+        <div className="project-next-copy">
+          <span id="next-projects-title" className="project-next-kicker">
+            Next projects
+          </span>
+          <nav className="project-next-list" aria-label="Next projects">
+            {nextProjects.map((nextProject) => {
+              const isActive = nextProject.id === activeProject.id;
+
+              return (
+                <Link
+                  key={nextProject.id}
+                  to={`/project/${nextProject.id}`}
+                  state={{ initialImageIndex: 0 }}
+                  className={`project-next-link${isActive ? ' is-active' : ''}`}
+                  onPointerEnter={() => void selectPreview(nextProject)}
+                  onPointerLeave={() => stopPreview(nextProject.id)}
+                  onFocus={() => void selectPreview(nextProject)}
+                  onBlur={() => stopPreview(nextProject.id)}
+                  aria-current={isActive ? 'true' : undefined}
+                >
+                  <span className="project-next-title">{nextProject.title}</span>
+                  <ArrowRight className="project-next-arrow" size={20} strokeWidth={1.8} />
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <Link
+          ref={previewRef}
+          to={`/project/${activeProject.id}`}
+          state={{ initialImageIndex: 0 }}
+          className="project-next-preview"
+          aria-label={`Open ${activeProject.title}`}
+          onPointerEnter={() => void selectPreview(activeProject)}
+          onPointerLeave={() => stopPreview(activeProject.id)}
+          onFocus={() => void selectPreview(activeProject)}
+          onBlur={() => stopPreview(activeProject.id)}
+        >
+          <AnimatePresence initial={false} mode="sync">
+            <motion.img
+              key={`${activeProject.id}-${desktopMediaState.sequence}-${activePreviewImage}`}
+              src={activePreviewImage}
+              {...getResponsiveImageProps(
+                activePreviewImage,
+                '(max-width: 768px) 100vw, 56vw',
+              )}
+              alt=""
+              className="project-next-image"
+              initial={{ opacity: 0, scale: 1.015 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+              loading="lazy"
+              decoding="async"
+              draggable={false}
+            />
+          </AnimatePresence>
+          <AnimatePresence>
+            {shouldShowDesktopVideo && activeVideo && (
+              <NextProjectPreviewVideo
+                key={`${activeProject.id}-${activeVideo}`}
+                src={activeVideo}
+                poster={activeCover}
+                startTime={activeVideoStartTime}
+              />
+            )}
+          </AnimatePresence>
+          <div className="project-next-preview-scrim" aria-hidden="true" />
+        </Link>
+      </div>
+    </motion.section>
+  );
 };
 
 const ProjectDetail = () => {
@@ -126,19 +811,21 @@ const ProjectDetail = () => {
   // ─── All hooks must come before any early return ───────────────────────────
   const [showBackToTop, setShowBackToTop] = useState(false);
   const [hoverBtt, setHoverBtt] = useState(false);
-  const [isCarouselSwitching, setIsCarouselSwitching] = useState(false);
   const [[carouselIndex, carouselDirection], setCarouselState] = useState<[number, number]>([0, 1]);
+  const isMobileDetailLayout = useMobileDetailLayout();
   const scrollRafRef = useRef<number | null>(null);
   const carouselSnapRafRef = useRef<number | null>(null);
   const carouselThumbRailRef = useRef<HTMLDivElement | null>(null);
-  const carouselSwitchTimeoutRef = useRef<number | null>(null);
+  const carouselMediaRequestRef = useRef(0);
 
   const project = projectsData.find((item) => item.id === id);
   const initialImageIndex: number = (location.state as any)?.initialImageIndex ?? 0;
   const detailImages = project ? [...project.images].reverse() : [];
-  const detailThumbs = project && Array.isArray((project as any).thumbs) && (project as any).thumbs.length === project.images.length
-    ? [...(project as any).thumbs].reverse()
-    : detailImages;
+  const detailThumbs = project && (project as any).thumbFolder
+    ? detailImages.map((image) => `${(project as any).thumbFolder}/${image.split('/').pop()}`)
+    : project && Array.isArray((project as any).thumbs) && (project as any).thumbs.length === project.images.length
+      ? [...(project as any).thumbs].reverse()
+      : detailImages;
   const leadImages = detailImages.slice(0, DETAIL_STATIC_IMAGE_COUNT);
   const carouselImages = detailImages.slice(DETAIL_STATIC_IMAGE_COUNT);
   const carouselThumbs = detailThumbs.slice(DETAIL_STATIC_IMAGE_COUNT);
@@ -288,7 +975,7 @@ const ProjectDetail = () => {
     carouselSnapRafRef.current = requestAnimationFrame(animateSnap);
   };
 
-  const showCarouselImage = (nextIndex: number, shouldSnap = true) => {
+  const showCarouselImage = async (nextIndex: number, shouldSnap = true) => {
     if (carouselImages.length <= 0) return;
 
     if (shouldSnap) {
@@ -306,24 +993,28 @@ const ProjectDetail = () => {
         : directDistance;
     const direction: 1 | -1 = wrappedDistance >= 0 ? 1 : -1;
 
-    void preloadCarouselMedia(carouselImages[normalizedIndex]);
+    const mediaRequest = ++carouselMediaRequestRef.current;
+    await preloadCarouselMedia(carouselImages[normalizedIndex]);
+    if (mediaRequest !== carouselMediaRequestRef.current) return;
+
     setCarouselState([normalizedIndex, direction]);
-    setIsCarouselSwitching(true);
-    if (carouselSwitchTimeoutRef.current != null) {
-      window.clearTimeout(carouselSwitchTimeoutRef.current);
-    }
-    carouselSwitchTimeoutRef.current = window.setTimeout(() => {
-      setIsCarouselSwitching(false);
-      carouselSwitchTimeoutRef.current = null;
-    }, CAROUSEL_SWITCH_DURATION_MS);
   };
 
+  useEffect(() => {
+    if (isMobileDetailLayout || carouselImages.length <= 1) return;
+
+    const previousImage = carouselImages[
+      (carouselIndex - 1 + carouselImages.length) % carouselImages.length
+    ];
+    const nextImage = carouselImages[(carouselIndex + 1) % carouselImages.length];
+    void preloadCarouselMedia(previousImage);
+    void preloadCarouselMedia(nextImage);
+  }, [activeCarouselImage, carouselImages.length, carouselIndex, isMobileDetailLayout]);
+
   useEffect(() => () => {
+    carouselMediaRequestRef.current += 1;
     if (carouselSnapRafRef.current != null) {
       cancelAnimationFrame(carouselSnapRafRef.current);
-    }
-    if (carouselSwitchTimeoutRef.current != null) {
-      window.clearTimeout(carouselSwitchTimeoutRef.current);
     }
   }, []);
 
@@ -370,7 +1061,11 @@ const ProjectDetail = () => {
       <div className="project-gallery">
         {project.detailVideo && (
           <section className="project-gallery-item project-gallery-item-video">
-            <video autoPlay muted loop playsInline src={project.detailVideo} className="detail-video" />
+            <ViewportAutoplayVideo
+              poster={project.detailVideoThumbnail}
+              src={`${project.detailVideo}#t=0.25`}
+              className="detail-video"
+            />
           </section>
         )}
         {leadImages.map((img, idx) => {
@@ -385,12 +1080,8 @@ const ProjectDetail = () => {
               transition={{ duration: 0.7 }}
             >
               {isVideo ? (
-                <video
+                <ViewportAutoplayVideo
                   id={`detail-img-${idx}`}
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
                   src={img}
                   className="detail-video"
                   style={{ width: '100%', display: 'block' }}
@@ -399,6 +1090,7 @@ const ProjectDetail = () => {
                 <img
                   id={`detail-img-${idx}`}
                   src={img}
+                  {...getResponsiveImageProps(img)}
                   alt={`${project.title} image`}
                   loading={idx <= initialImageIndex ? 'eager' : 'lazy'}
                 />
@@ -422,7 +1114,7 @@ const ProjectDetail = () => {
           </motion.section>
         )}
 
-        {carouselImages.length > 0 && activeCarouselImage && (
+        {!isMobileDetailLayout && carouselImages.length > 0 && activeCarouselImage && (
           <motion.section
             id="detail-carousel"
             className="project-carousel"
@@ -444,7 +1136,7 @@ const ProjectDetail = () => {
             }}
           >
             <div className="project-carousel-main">
-              <AnimatePresence initial={false} custom={carouselDirection} mode="popLayout">
+              <AnimatePresence initial={false} custom={carouselDirection} mode="sync">
                 <motion.div
                   key={`${activeCarouselImage}-${carouselIndex}`}
                   custom={carouselDirection}
@@ -455,12 +1147,8 @@ const ProjectDetail = () => {
                   exit="exit"
                 >
                   {isVideoSrc(activeCarouselImage) ? (
-                    <video
+                    <ViewportAutoplayVideo
                       id={`detail-img-${DETAIL_STATIC_IMAGE_COUNT + carouselIndex}`}
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
                       src={activeCarouselImage}
                       className="detail-video"
                     />
@@ -468,25 +1156,13 @@ const ProjectDetail = () => {
                     <img
                       id={`detail-img-${DETAIL_STATIC_IMAGE_COUNT + carouselIndex}`}
                       src={activeCarouselImage}
+                      {...getResponsiveImageProps(activeCarouselImage)}
                       alt={`${project.title} image ${DETAIL_STATIC_IMAGE_COUNT + carouselIndex + 1}`}
                       loading={carouselIndex <= 1 ? 'eager' : 'lazy'}
                       decoding="async"
                     />
                   )}
                 </motion.div>
-              </AnimatePresence>
-
-              <AnimatePresence>
-                {isCarouselSwitching && (
-                  <motion.div
-                    key={`carousel-sheen-${carouselIndex}`}
-                    className="project-carousel-sheen"
-                    initial={{ opacity: 0, x: '-18%', skewX: -12 }}
-                    animate={{ opacity: [0, 0.08, 0.03, 0], x: ['-18%', '6%', '24%', '42%'] }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }}
-                  />
-                )}
               </AnimatePresence>
 
               {carouselImages.length > 1 && (
@@ -516,6 +1192,9 @@ const ProjectDetail = () => {
                 {carouselImages.map((img, thumbIndex) => {
                   const thumbSrc = carouselThumbs[thumbIndex] || img;
                   const isSelected = carouselIndex === thumbIndex;
+                  const shouldRenderThumbnail =
+                    Boolean((project as any).thumbFolder) ||
+                    Math.abs(thumbIndex - carouselIndex) <= DETAIL_THUMBNAIL_WINDOW_RADIUS;
                   return (
                     <button
                       key={`${thumbSrc}-${thumbIndex}`}
@@ -526,8 +1205,19 @@ const ProjectDetail = () => {
                       aria-label={`Show image ${DETAIL_STATIC_IMAGE_COUNT + thumbIndex + 1}`}
                       aria-pressed={isSelected}
                     >
-                      {!isVideoSrc(thumbSrc) ? (
-                        <img src={thumbSrc} alt="" loading="lazy" decoding="async" draggable={false} />
+                      {!isVideoSrc(thumbSrc) && shouldRenderThumbnail ? (
+                        <img
+                          src={thumbSrc}
+                          {...getResponsiveImageProps(thumbSrc, '80px')}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          draggable={false}
+                        />
+                      ) : !isVideoSrc(thumbSrc) ? (
+                        <span className="project-carousel-thumb-placeholder">
+                          {String(DETAIL_STATIC_IMAGE_COUNT + thumbIndex + 1).padStart(2, '0')}
+                        </span>
                       ) : (
                         <span className="project-carousel-video-thumb">Video</span>
                       )}
@@ -539,7 +1229,7 @@ const ProjectDetail = () => {
           </motion.section>
         )}
 
-        {carouselImages.length > 0 && (
+        {isMobileDetailLayout && carouselImages.length > 0 && (
           <div className="project-mobile-gallery" aria-label={`${project.title} additional images`}>
             {carouselImages.map((img, imageIndex) => {
               const isVideo = isVideoSrc(img);
@@ -549,17 +1239,14 @@ const ProjectDetail = () => {
                   className={`project-gallery-item ${isVideo ? 'project-gallery-item-video' : ''}`}
                 >
                   {isVideo ? (
-                    <video
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
+                    <ViewportAutoplayVideo
                       src={img}
                       className="detail-video"
                     />
                   ) : (
                     <img
                       src={img}
+                      {...getResponsiveImageProps(img)}
                       alt={`${project.title} image ${DETAIL_STATIC_IMAGE_COUNT + imageIndex + 1}`}
                       loading="lazy"
                       decoding="async"
@@ -613,6 +1300,8 @@ const ProjectDetail = () => {
           </div>
         </motion.section>
       )}
+
+      <NextProjectsSection key={project.id} currentProjectId={project.id} />
 
       {/* ── Back to Top Button ─────────────────────────────────────────────── */}
       <AnimatePresence>

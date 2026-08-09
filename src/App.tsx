@@ -1,10 +1,16 @@
-import React, { startTransition, useEffect, useRef, useState, createContext, useContext } from 'react';
+import React, { startTransition, useCallback, useEffect, useRef, useState, createContext, useContext } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence, useMotionValue, useSpring, useScroll, useTransform, useMotionValueEvent, type Variants } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useSpring, useScroll, useTransform, useMotionValueEvent, useReducedMotion, type Variants } from 'framer-motion';
 import { ArrowLeft, ArrowRight, ExternalLink, Mail, X } from 'lucide-react';
 import projectsData from './projects.json';
 import Lenis from 'lenis';
-import ProjectDetail from './ProjectDetail';
+import {
+  getResponsiveImageCandidate,
+  getResponsiveImageProps,
+  getResponsiveVideoSource,
+} from './media';
+
+const ProjectDetail = React.lazy(() => import('./ProjectDetail'));
 
 const useIsMobile = () => {
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth <= 1280);
@@ -29,6 +35,41 @@ const useIsPhone = () => {
 const netflixLogoSrc = new URL('../Netflix logo.svg', import.meta.url).href;
 const primeLogoSrc = new URL('../Amazon_Prime_Video_logo 1.svg', import.meta.url).href;
 const compactViewportHeight = '100svh';
+const desktopProjectStageHeight = 'clamp(560px, 50vw, 82vh)';
+const desktopProjectBrowsingOffset = `calc((100vh - ${desktopProjectStageHeight}) / 2)`;
+const desktopProjectSidebarActivationDelayMs = 1500;
+const videoPosterStartTimeSeconds = 0.25;
+
+const getProjectClientLogo = (projectId: string) => {
+  if (projectId === '02 - LDR Scream of Tyrannosaurus') {
+    return { src: netflixLogoSrc, alt: 'Netflix' };
+  }
+  if (projectId === '03 - Secret Level Concord') {
+    return { src: primeLogoSrc, alt: 'Prime Video' };
+  }
+  return null;
+};
+
+const withVideoPosterStartTime = (
+  src: string,
+  startTime = videoPosterStartTimeSeconds
+) => (
+  `${src}#t=${startTime}`
+);
+
+const getProjectCoverImage = (project?: {
+  videoThumbnail?: string;
+  coverImage?: string;
+  images?: string[];
+  thumbnail?: string;
+}) => (
+  project?.videoThumbnail ||
+  project?.coverImage ||
+  (Array.isArray(project?.images) && project.images.length
+    ? project.images[project.images.length - 1]
+    : project?.thumbnail) ||
+  ''
+);
 
 const imageDecodeCache = new Map<string, Promise<void>>();
 type RouteAnimationMode = 'default' | 'project-one-to-detail' | 'project-one-to-home';
@@ -36,7 +77,9 @@ type RouteAnimationMode = 'default' | 'project-one-to-detail' | 'project-one-to-
 
 const preloadAndDecodeImage = (src?: string, priority: 'high' | 'low' = 'low') => {
   if (!src || typeof window === 'undefined') return Promise.resolve();
-  const cachedDecode = imageDecodeCache.get(src);
+  const responsiveSrc = getResponsiveImageCandidate(src);
+  if (!responsiveSrc) return Promise.resolve();
+  const cachedDecode = imageDecodeCache.get(responsiveSrc);
   if (cachedDecode) return cachedDecode;
 
   const decodePromise = new Promise<void>((resolve) => {
@@ -52,13 +95,146 @@ const preloadAndDecodeImage = (src?: string, priority: 'high' | 'low' = 'low') =
 
     img.onload = decode;
     img.onerror = finish;
-    img.src = src;
+    img.src = responsiveSrc;
 
     if (img.complete) decode();
   });
 
-  imageDecodeCache.set(src, decodePromise);
+  imageDecodeCache.set(responsiveSrc, decodePromise);
   return decodePromise;
+};
+
+const ResilientAutoplayVideo = ({
+  src,
+  poster,
+  alt,
+  className,
+  style,
+  startTime = videoPosterStartTimeSeconds,
+}: {
+  src: string;
+  poster: string;
+  alt: string;
+  className?: string;
+  style?: React.CSSProperties;
+  startTime?: number;
+}) => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [isShowingVideo, setIsShowingVideo] = useState(false);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [isPageVisible, setIsPageVisible] = useState(() => (
+    typeof document === 'undefined' || document.visibilityState === 'visible'
+  ));
+  const shouldLoadVideo = isNearViewport && isPageVisible;
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      setIsNearViewport(entry.isIntersecting);
+    }, { rootMargin: '400px 0px', threshold: 0.01 });
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const updateVisibility = () => setIsPageVisible(document.visibilityState === 'visible');
+    document.addEventListener('visibilitychange', updateVisibility);
+    return () => document.removeEventListener('visibilitychange', updateVisibility);
+  }, []);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !shouldLoadVideo) return;
+
+    let previousTime = video.currentTime;
+    const watchdogId = window.setInterval(() => {
+      if (video.paused || video.ended) {
+        setIsShowingVideo(false);
+        return;
+      }
+
+      const currentTime = video.currentTime;
+      const isAdvancing = currentTime > previousTime + 0.02 || currentTime < previousTime;
+      setIsShowingVideo(isAdvancing && video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
+      previousTime = currentTime;
+    }, 900);
+
+    return () => window.clearInterval(watchdogId);
+  }, [shouldLoadVideo, src]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || shouldLoadVideo) return;
+    video.pause();
+    video.removeAttribute('src');
+    video.load();
+  }, [shouldLoadVideo]);
+
+  const mediaStyle: React.CSSProperties = {
+    ...style,
+    width: '100%',
+    height: '100%',
+    gridArea: '1 / 1 / 2 / 2',
+    display: 'block',
+    objectFit: style?.objectFit ?? 'cover',
+    objectPosition: style?.objectPosition ?? 'center center',
+  };
+
+  return (
+    <span
+      ref={containerRef}
+      style={{
+        width: '100%',
+        height: '100%',
+        display: 'grid',
+        gridArea: style?.gridArea ?? '1 / 1 / 2 / 2',
+        overflow: 'hidden',
+        backgroundColor: '#000',
+      }}
+    >
+      <img
+        src={poster}
+        {...getResponsiveImageProps(poster)}
+        alt={alt}
+        className={className}
+        loading="eager"
+        fetchPriority="high"
+        decoding="async"
+        draggable={false}
+        style={mediaStyle}
+      />
+      <video
+        ref={videoRef}
+        autoPlay={shouldLoadVideo}
+        muted
+        loop
+        playsInline
+        preload={shouldLoadVideo ? 'metadata' : 'none'}
+        poster={poster}
+        src={shouldLoadVideo
+          ? withVideoPosterStartTime(getResponsiveVideoSource(src), startTime)
+          : undefined}
+        className={className}
+        aria-label={alt}
+        onPlaying={() => setIsShowingVideo(true)}
+        onCanPlay={() => {
+          if (!videoRef.current?.paused) setIsShowingVideo(true);
+        }}
+        onWaiting={() => setIsShowingVideo(false)}
+        onStalled={() => setIsShowingVideo(false)}
+        onPause={() => setIsShowingVideo(false)}
+        onError={() => setIsShowingVideo(false)}
+        style={{
+          ...mediaStyle,
+          opacity: shouldLoadVideo && isShowingVideo ? 1 : 0,
+          transition: 'opacity 180ms ease',
+        }}
+      />
+    </span>
+  );
 };
 
 // Scroll management is now handled in AnimatedRoutes for seamless transitions
@@ -107,13 +283,36 @@ const LenisController = () => {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    ensureLenis();
-    lenisInstance?.resize();
-  }, [pathname]);
+    const finePointerQuery = window.matchMedia(
+      '(hover: hover) and (pointer: fine) and (min-width: 769px)'
+    );
+    const reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const syncLenis = () => {
+      const shouldRun = (
+        finePointerQuery.matches &&
+        !reducedMotionQuery.matches &&
+        document.visibilityState === 'visible'
+      );
+      if (shouldRun) {
+        ensureLenis();
+        lenisInstance?.resize();
+      } else {
+        destroyLenis();
+      }
+    };
 
-  useEffect(() => () => {
-    destroyLenis();
-  }, []);
+    syncLenis();
+    finePointerQuery.addEventListener('change', syncLenis);
+    reducedMotionQuery.addEventListener('change', syncLenis);
+    document.addEventListener('visibilitychange', syncLenis);
+
+    return () => {
+      finePointerQuery.removeEventListener('change', syncLenis);
+      reducedMotionQuery.removeEventListener('change', syncLenis);
+      document.removeEventListener('visibilitychange', syncLenis);
+      destroyLenis();
+    };
+  }, [pathname]);
 
   return null;
 };
@@ -548,8 +747,10 @@ const mediaTransition = {
 };
 
 const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
+  const heroRef = useRef<HTMLDivElement>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [playHeroIntro, setPlayHeroIntro] = useState(false);
+  const [isHeroVisible, setIsHeroVisible] = useState(true);
   const [[activeIdx, direction], setState] = useState<[number, number]>([0, 1]);
   const cursor = useCursor();
   const isMobile = useIsMobile();
@@ -558,13 +759,25 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   const activeProject = featuredProjects[activeIdx];
 
   useEffect(() => {
-    if (projects.length <= 1) return;
+    if (projects.length <= 1 || !isHeroVisible) return;
     const duration = currentIndex === projects.length - 1 ? 7000 : 5000;
     const timeout = window.setTimeout(() => {
       setCurrentIndex((prev) => (prev + 1) % projects.length);
     }, duration);
     return () => window.clearTimeout(timeout);
-  }, [currentIndex, projects.length]);
+  }, [currentIndex, isHeroVisible, projects.length]);
+
+  useEffect(() => {
+    const hero = heroRef.current;
+    if (!hero) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setIsHeroVisible(entry.isIntersecting),
+      { threshold: 0.01 }
+    );
+    observer.observe(hero);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
@@ -574,6 +787,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   }, []);
 
   const project = projects[currentIndex];
+  const videoPoster = getProjectCoverImage(project);
 
   let displayTitle = project?.title || '';
   if (project?.title === 'LDR Scream of Tyrannosaurus') displayTitle = 'Love Death & Robots Season 4: Scream of the Tyrannosaurus';
@@ -588,13 +802,6 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
     });
   };
 
-  useEffect(() => {
-    const t = setInterval(() => {
-      setState(([i]) => [(i + 1) % featuredProjects.length, 1]);
-    }, 6000);
-    return () => clearInterval(t);
-  }, []);
-
   const prev = featuredProjects[(activeIdx - 1 + featuredProjects.length) % featuredProjects.length];
   const curr = featuredProjects[activeIdx];
   const next = featuredProjects[(activeIdx + 1) % featuredProjects.length];
@@ -602,17 +809,17 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   const nextI = (activeIdx + 1) % featuredProjects.length;
 
   if (!project) return null;
+  const renderLegacyHiddenMedia = import.meta.env.VITE_ENABLE_LEGACY_HERO === 'true';
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter+Display:wght@400;500;600;700;800;900&display=swap');
         .hero-dot { transition: background 0.25s, transform 0.25s; cursor: pointer; }
         .hero-dot:hover { transform: scale(1.3); }
       `}</style>
 
       {/* ── HERO SECTION ── */}
-      <div className="hero-section" style={{ height: isMobile ? compactViewportHeight : '100vh', position: 'relative', overflow: 'hidden' }}>
+      <div ref={heroRef} className="hero-section" style={{ height: isMobile ? compactViewportHeight : '100vh', position: 'relative', overflow: 'hidden' }}>
 
         {isMobile ? (
           /* ── MOBILE: blurred bg + landscape card ── */
@@ -626,21 +833,23 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                 transition={{ duration: 0.72, ease: [0.22, 1, 0.36, 1] }}
                 style={{ position: 'absolute', inset: 0, zIndex: 0 }}
               >
-                {project.video ? (
-                  <video
-                    autoPlay
-                    muted
-                    loop
-                    playsInline
+                {project.video && isHeroVisible ? (
+                  <ResilientAutoplayVideo
                     src={project.video}
+                    poster={videoPoster}
+                    alt={project.title}
+                    startTime={project.videoStartTime}
                     className="mobile-hero-media"
                     style={{ objectPosition: MOBILE_HERO_FOCAL_POINT[project.id] ?? '50% center' }}
                   />
                 ) : (
                   <img
-                    src={project.thumbnail}
+                    src={videoPoster}
+                    {...getResponsiveImageProps(videoPoster)}
                     alt={project.title}
                     className="mobile-hero-media"
+                    fetchPriority="high"
+                    decoding="async"
                     style={{ objectPosition: MOBILE_HERO_FOCAL_POINT[project.id] ?? '50% center' }}
                   />
                 )}
@@ -664,6 +873,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               }}
             />
 
+            {renderLegacyHiddenMedia && (
             <motion.div
               initial={{ opacity: 0, y: 18, scale: 0.97, filter: 'blur(8px)' }}
               animate={playHeroIntro ? { opacity: 1, y: 0, scale: 1, filter: 'blur(0px)' } : { opacity: 0, y: 18, scale: 0.97, filter: 'blur(8px)' }}
@@ -688,7 +898,12 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                     {project.video ? (
                       <video autoPlay muted loop playsInline src={project.video} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     ) : (
-                      <img src={project.thumbnail} alt={project.title} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <img
+                        src={project.thumbnail}
+                        {...getResponsiveImageProps(project.thumbnail, '(max-width: 768px) 100vw, 45vw')}
+                        alt={project.title}
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      />
                     )}
                   </motion.div>
                 </AnimatePresence>
@@ -717,6 +932,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                 </div>
               </Link>
             </motion.div>
+            )}
 
             <motion.div
               initial={{ opacity: 0, y: 12, filter: 'blur(8px)' }}
@@ -725,11 +941,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               className="mobile-hero-identity"
             >
               <div>
-                <div style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '19px', fontWeight: 820, lineHeight: 1, letterSpacing: '0px', whiteSpace: 'nowrap' }}>
+                <div className="mobile-hero-name" style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '19px', fontWeight: 820, lineHeight: 1, letterSpacing: '0px', whiteSpace: 'nowrap' }}>
                   YOGI SOELASTAMA
-                </div>
-                <div style={{ marginTop: '8px', fontSize: '9px', fontWeight: 800, letterSpacing: '1.45px', lineHeight: 1, textTransform: 'uppercase', color: 'rgba(255,255,255,0.62)', whiteSpace: 'nowrap' }}>
-                  Cinematic Concept Artist
                 </div>
               </div>
             </motion.div>
@@ -778,10 +991,22 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                   onMouseEnter={() => cursor.set({ mode: 'link' })}
                   onMouseLeave={() => cursor.set({ mode: 'default' })}
                 >
-                  {project.video ? (
-                    <video autoPlay muted loop playsInline src={project.video} className="hero-video" />
+                  {project.video && isHeroVisible ? (
+                    <ResilientAutoplayVideo
+                      src={project.video}
+                      poster={videoPoster}
+                      alt={project.title}
+                      startTime={project.videoStartTime}
+                      className="hero-video"
+                    />
                   ) : (
-                    <img src={project.thumbnail} alt={project.title} className="hero-video"
+                    <img
+                      src={videoPoster}
+                      {...getResponsiveImageProps(videoPoster)}
+                      alt={project.title}
+                      className="hero-video"
+                      fetchPriority="high"
+                      decoding="async"
                       style={{ objectFit: 'cover', width: '100%', height: '100%' }} />
                   )}
                 </Link>
@@ -831,41 +1056,28 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
           </motion.div>
         </motion.div>
 
-        {/* Main Core: Cinematic Concept Artist + Now Playing */}
+        {/* Desktop project context */}
         <motion.div
           className="hero-bottom-bar"
           initial="hidden" animate="visible"
           variants={{ hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.15, delayChildren: 0.2 } } }}
           style={{
             position: 'absolute', bottom: '120px', left: 0, width: '100%',
-            color: '#fff', padding: '0 48px', display: 'flex', justifyContent: 'space-between',
+            color: '#fff', padding: '0 48px', display: 'flex', justifyContent: 'flex-start',
             alignItems: 'flex-end', zIndex: 2, pointerEvents: 'none',
           }}
         >
-          {/* Left: Cinematic Concept Artist — per-char */}
-          <div style={{ display: 'flex', flexDirection: 'column', pointerEvents: 'none', position: 'relative', paddingBottom: '10px', gap: '8px' }}>
-            <motion.div
-              className="hero-cca-text"
-              initial="hidden"
-              animate={playHeroIntro ? 'visible' : 'hidden'}
-              variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.022, delayChildren: 0.1 } } }}
-              style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '24px', fontWeight: 900, letterSpacing: '-0.04em', textShadow: '0 2px 10px rgba(0,0,0,1)', textTransform: 'uppercase', lineHeight: 1.2, color: '#fff', display: 'flex', overflow: 'hidden' }}
-            >
-              {'Cinematic Concept Artist'.split('').map((char, i) => (
-                <motion.span
-                  key={i}
-                  variants={{
-                    hidden: { y: '105%', opacity: 0, filter: 'blur(6px)' },
-                    visible: { y: '0%', opacity: 1, filter: 'blur(0px)', transition: { duration: 0.5, ease: [0.16, 1, 0.3, 1] } }
-                  }}
-                  style={{ display: 'inline-block', whiteSpace: 'pre' }}
-                >{char}</motion.span>
-              ))}
-            </motion.div>
-          </div>
-
-          {/* Right: Now Playing + title — per-char */}
-          <div className="hero-now-playing" style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '6px' }}>
+          <div
+            className="hero-now-playing"
+            style={{
+              width: 'min(680px, calc(100vw - 96px))',
+              textAlign: 'left',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: '6px',
+            }}
+          >
             <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '2px', fontWeight: 600, color: 'rgba(255,255,255,0.5)', overflow: 'hidden' }}>
               <motion.span
                 initial={{ y: '105%', display: 'block' }}
@@ -881,7 +1093,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                 exit={{ opacity: 0, y: -6, filter: 'blur(4px)' }}
                 transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
                 className="hero-now-playing-title"
-                style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '22px', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,1)', color: '#fff', overflow: 'hidden' }}
+                style={{ fontFamily: '"Inter Display", Inter, sans-serif', fontSize: '24px', fontWeight: 900, lineHeight: 1.08, textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 2px 10px rgba(0,0,0,1)', color: '#fff', overflowWrap: 'anywhere', textWrap: 'balance' }}
               >
                 {scrambledDisplayTitle}
               </motion.div>
@@ -891,6 +1103,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
       </div>
 
       {/* ── CAROUSEL SECTION (hidden) ── */}
+      {renderLegacyHiddenMedia && (
       <div style={{ display: 'none' }}>
       <div style={{ background: '#050505', position: 'relative', padding: isMobile ? 'clamp(32px,6vh,56px) 0 clamp(24px,4vh,40px)' : 'clamp(48px,8vh,96px) 0 clamp(40px,6vh,72px)' }}>
         {/* left/right spotlight scrims */}
@@ -922,6 +1135,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
           >
             <AnimatePresence mode="popLayout">
               <motion.img key={prev.id} src={prev.thumbnail} alt=""
+                {...getResponsiveImageProps(prev.thumbnail, '28vw')}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -951,6 +1165,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 ) : (
                   <motion.img src={curr.thumbnail} alt={SHORT_TITLE[curr.id] || ''}
+                    {...getResponsiveImageProps(curr.thumbnail, '(max-width: 768px) 100vw, 44vw')}
                     initial={{ scale: 1 }} animate={{ scale: 1.08 }}
                     transition={{ duration: 9, ease: 'linear' }}
                     style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
@@ -977,6 +1192,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
           >
             <AnimatePresence mode="popLayout">
               <motion.img key={next.id} src={next.thumbnail} alt=""
+                {...getResponsiveImageProps(next.thumbnail, '28vw')}
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                 transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1023,7 +1239,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
           </div>
         </div>
       </div>
-      </div>{/* end carousel hidden wrapper */}
+      </div>
+      )}
     </>
   );
 }
@@ -1233,10 +1450,21 @@ const AboutSection = () => {
   );
 }
 
-const HeroSection = ({ project, index, isLast }: { project: any; index: number; isLast?: boolean }) => {
-  const targetRef = useRef<HTMLDivElement>(null);
+const HeroSectionStage = ({
+  project,
+  isLast,
+  targetRef,
+  isMediaActive,
+  onActiveLayoutChange,
+}: {
+  project: any;
+  isLast?: boolean;
+  targetRef: React.RefObject<HTMLDivElement | null>;
+  isMediaActive: boolean;
+  onActiveLayoutChange: (isActive: boolean) => void;
+}) => {
   const navigate = useNavigate();
-  const usesProjectGridMechanism = index <= 3;
+  const usesProjectGridMechanism = true;
   const isCompactViewport = useIsMobile();
   const isPhoneViewport = useIsPhone();
 
@@ -1247,6 +1475,10 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
 
   const scale = useTransform(scrollYProgress, [0, 1], [1, isLast ? 1 : 0.92]);
   const borderRadius = useTransform(scrollYProgress, [0, 1], ['0px', isLast ? '0px' : '24px']);
+  const stageClipPath = useTransform(
+    borderRadius,
+    (radius) => `inset(0px round ${radius})`
+  );
 
   const [titleState, setTitleState] = useState<'visible' | 'glitchingOut' | 'hidden' | 'glitchingIn'>('visible');
   const [selectedThumbIndex, setSelectedThumbIndex] = useState(0);
@@ -1266,71 +1498,89 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const [showProgressBar, setShowProgressBar] = useState(false);
   const [gridMode, setGridMode] = useState<1 | 2>(1);
   const [modalImageIndex, setModalImageIndex] = useState<number | null>(null);
-  const [shouldHydrateThumbnails, setShouldHydrateThumbnails] = useState(false);
+  const [hydratedThumbnailIndexes, setHydratedThumbnailIndexes] = useState<Record<number, boolean>>({});
   const [loadedThumbnailIndexes, setLoadedThumbnailIndexes] = useState<Record<number, boolean>>({});
   const isLocked = useRef(false);
   const mediaRequestRef = useRef(0);
   const mediaSwitchTimeoutRef = useRef<number | null>(null);
+  const sidebarActivationTimeoutRef = useRef<number | null>(null);
   const holdDetailTimeoutRef = useRef<number | null>(null);
+  const thumbnailHydrationTimeoutRef = useRef<number | null>(null);
   const thumbnailRailRef = useRef<HTMLDivElement>(null);
   const thumbnailButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
 
-  // Track global scroll direction to prevent false triggers
-  const { scrollY } = useScroll();
-  const lastY = useRef(0);
-  const isScrollingDownRef = useRef(true);
-
-  useMotionValueEvent(scrollY, "change", (latest) => {
-    isScrollingDownRef.current = latest > lastY.current;
-    lastY.current = latest;
-  });
-
-  // 1. Arriving from BELOW (Glitch OUT)
+  // Open only after the section is stably framed, regardless of scroll direction.
   useEffect(() => {
     if (!targetRef.current || titleState !== 'visible') return;
     const el = targetRef.current;
-    
-    const observer = new IntersectionObserver(([entry]) => {
-      // 0.95 means it's fully snapped into the screen
-      if (entry.intersectionRatio >= 0.95 && isScrollingDownRef.current && !isLocked.current) {
-         observer.unobserve(el);
-         isLocked.current = true;
+    let latestIntersectionRatio = 0;
 
-         if (usesProjectGridMechanism) {
-           setGridMode(1);
-           setShowProgressBar(false);
-           setTitleState('glitchingOut');
-           setTimeout(() => {
-             setTitleState('hidden');
-             isLocked.current = false;
-           }, 550);
-         } else {
-           setTitleState('glitchingOut');
-           if (lenisInstance) {
-             lenisInstance.stop();
-             document.body.style.pointerEvents = 'none';
-             setTimeout(() => {
-               setTitleState('hidden');
-               lenisInstance!.start();
-               document.body.style.pointerEvents = 'auto';
-               isLocked.current = false;
-             }, 550);
-           } else {
-             setTimeout(() => {
-               setTitleState('hidden');
-               isLocked.current = false;
-             }, 550);
-           }
-         }
+    const observer = new IntersectionObserver(([entry]) => {
+      latestIntersectionRatio = entry.intersectionRatio;
+
+      if (entry.intersectionRatio < 0.9) {
+        if (sidebarActivationTimeoutRef.current != null) {
+          window.clearTimeout(sidebarActivationTimeoutRef.current);
+          sidebarActivationTimeoutRef.current = null;
+        }
+        return;
       }
-    }, { threshold: 0.95 });
+
+      if (
+        entry.intersectionRatio < 0.95 ||
+        isLocked.current ||
+        sidebarActivationTimeoutRef.current != null
+      ) {
+        return;
+      }
+
+      sidebarActivationTimeoutRef.current = window.setTimeout(() => {
+        sidebarActivationTimeoutRef.current = null;
+        if (latestIntersectionRatio < 0.9 || isLocked.current) return;
+
+        observer.unobserve(el);
+        isLocked.current = true;
+
+        if (usesProjectGridMechanism) {
+          setGridMode(1);
+          setShowProgressBar(false);
+          setTitleState('glitchingOut');
+          window.setTimeout(() => {
+            setTitleState('hidden');
+            isLocked.current = false;
+          }, 550);
+          return;
+        }
+
+        setTitleState('glitchingOut');
+        if (lenisInstance) {
+          lenisInstance.stop();
+          document.body.style.pointerEvents = 'none';
+          window.setTimeout(() => {
+            setTitleState('hidden');
+            lenisInstance!.start();
+            document.body.style.pointerEvents = 'auto';
+            isLocked.current = false;
+          }, 550);
+        } else {
+          window.setTimeout(() => {
+            setTitleState('hidden');
+            isLocked.current = false;
+          }, 550);
+        }
+      }, desktopProjectSidebarActivationDelayMs);
+    }, { threshold: [0, 0.9, 0.95, 1] });
 
     observer.observe(el);
     return () => {
-       observer.disconnect();
-       document.body.style.pointerEvents = 'auto';
+      observer.disconnect();
+      if (sidebarActivationTimeoutRef.current != null) {
+        window.clearTimeout(sidebarActivationTimeoutRef.current);
+        sidebarActivationTimeoutRef.current = null;
+      }
+      document.body.style.pointerEvents = 'auto';
     };
-  }, [usesProjectGridMechanism, titleState]);
+  }, [targetRef, titleState, usesProjectGridMechanism]);
 
   useEffect(() => {
     if (!usesProjectGridMechanism || !targetRef.current || titleState === 'visible') return;
@@ -1360,7 +1610,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [usesProjectGridMechanism, titleState]);
+  }, [targetRef, titleState, usesProjectGridMechanism]);
 
   // 2. Being Revealed from ABOVE (Glitch IN)
   const lastProgress = useRef(0);
@@ -1400,15 +1650,25 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
 
   const cursor = useCursor();
 
-  if (!project) return null;
   const baseProjectImages = Array.isArray(project.images) && project.images.length
     ? project.images
     : [project.thumbnail].filter(Boolean);
   const baseThumbnailSources = Array.isArray(project.thumbs) && project.thumbs.length === baseProjectImages.length
     ? project.thumbs
     : baseProjectImages;
-  const projectImages = usesProjectGridMechanism ? [...baseProjectImages].reverse() : baseProjectImages;
-  const thumbnailSources = usesProjectGridMechanism ? [...baseThumbnailSources].reverse() : baseThumbnailSources;
+  const orderedProjectImages = usesProjectGridMechanism ? [...baseProjectImages].reverse() : [...baseProjectImages];
+  const orderedThumbnailSources = usesProjectGridMechanism ? [...baseThumbnailSources].reverse() : [...baseThumbnailSources];
+  const coverImageIndex = project.coverImage ? orderedProjectImages.indexOf(project.coverImage) : -1;
+  const projectImages = coverImageIndex > 0
+    ? [orderedProjectImages[coverImageIndex], ...orderedProjectImages.filter((_: string, index: number) => index !== coverImageIndex)]
+    : orderedProjectImages;
+  const reorderedThumbnailSources = coverImageIndex > 0
+    ? [orderedThumbnailSources[coverImageIndex], ...orderedThumbnailSources.filter((_: string, index: number) => index !== coverImageIndex)]
+    : orderedThumbnailSources;
+  const thumbnailSources = reorderedThumbnailSources
+    .map((src: string, imageIndex: number) => (
+      imageIndex === 0 && project.videoThumbnail ? project.videoThumbnail : src
+    ));
   const totalProjectImages = projectImages.length;
 
   let displayTitle = project.title;
@@ -1419,6 +1679,10 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const isProjectOneCompactLayout = usesProjectGridMechanism && isCompactViewport;
   const isProjectOnePhoneLayout = usesProjectGridMechanism && isPhoneViewport;
   const isSidebarOpen = (titleState === 'hidden' || showProgressBar) && usesProjectGridMechanism && !isProjectOnePhoneLayout;
+  const shouldCenterActiveLayout = !isLast && !isPhoneViewport && isSidebarOpen;
+  const shouldKeepMediaActive = isMediaActive || isSidebarOpen;
+  const isCinematicIntroVisible = titleState === 'visible' || titleState === 'glitchingIn';
+  const projectClientLogo = getProjectClientLogo(project.id);
   const detailLinkState = usesProjectGridMechanism ? { transitionSource: 'project-one-grid' } : undefined;
   const projectOneObjectFit = 'cover';
   const projectOneLayoutTransition = {
@@ -1447,6 +1711,42 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const detailGridHeight = isProjectOnePhoneLayout ? '18vh' : (isProjectOneCompactLayout ? '28vh' : '48vh');
   const projectOneSidebarWidth = 'clamp(240px, 28vw, 480px)';
   const projectOneCompactPanelHeight = isProjectOnePhoneLayout ? 'clamp(260px, 38vh, 360px)' : 'clamp(196px, 31vh, 300px)';
+
+  useEffect(() => {
+    onActiveLayoutChange(shouldCenterActiveLayout);
+    return () => onActiveLayoutChange(false);
+  }, [onActiveLayoutChange, shouldCenterActiveLayout]);
+
+  const scrollActiveLayoutToViewportCenter = useCallback(() => {
+    if (!shouldCenterActiveLayout) return;
+    const section = targetRef.current;
+    if (!section) return;
+
+    const sectionTop = section.getBoundingClientRect().top;
+    if (Math.abs(sectionTop) < 0.5) return;
+
+    const targetScrollY = Math.max(0, window.scrollY + sectionTop);
+    if (lenisInstance) {
+      lenisInstance.scrollTo(targetScrollY, {
+        duration: 0.48,
+        easing: (progress: number) => 1 - Math.pow(1 - progress, 3),
+      });
+      return;
+    }
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({
+      top: targetScrollY,
+      behavior: reduceMotion ? 'auto' : 'smooth',
+    });
+  }, [shouldCenterActiveLayout, targetRef]);
+
+  useEffect(() => {
+    if (!shouldCenterActiveLayout) return;
+    const frameId = window.requestAnimationFrame(scrollActiveLayoutToViewportCenter);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [scrollActiveLayoutToViewportCenter, shouldCenterActiveLayout]);
+
   const projectOneSidebarTitleVariants: Variants = {
     hidden: { opacity: 0, y: 12, filter: 'blur(8px)', clipPath: 'inset(0 0 24% 0)' },
     visible: {
@@ -1490,45 +1790,42 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     gridArea: '1 / 1 / 2 / 2',
     backgroundColor: '#000',
   };
+  const primaryPreloadSource = projectImages[displayedImageIndex];
+  const adjacentPreloadSource = projectImages[(displayedImageIndex + 1) % projectImages.length];
+  const isLargeGallery = totalProjectImages >= 16;
+  const hydrateThumbnailWindow = useCallback((centerIndex: number) => {
+    setHydratedThumbnailIndexes((previous) => {
+      const next = { ...previous };
+      let changed = false;
+      const hydrationRadius = totalProjectImages >= 16 ? 0 : 1;
+
+      for (let index = centerIndex - hydrationRadius; index <= centerIndex + hydrationRadius; index += 1) {
+        if (index < 0 || index >= totalProjectImages || next[index]) continue;
+        next[index] = true;
+        changed = true;
+      }
+
+      return changed ? next : previous;
+    });
+  }, [totalProjectImages]);
 
   useEffect(() => {
-    if (!usesProjectGridMechanism || !project?.images?.length) return;
+    if (!usesProjectGridMechanism || !primaryPreloadSource) return;
 
-    const criticalSources = [
-      project.thumbnail,
-      ...project.images.slice(0, 3),
+    const nearbySources = [
+      primaryPreloadSource,
+      isLargeGallery ? undefined : adjacentPreloadSource,
     ].filter((src): src is string => Boolean(src));
 
-    criticalSources.forEach((src, idx) => {
-      void preloadAndDecodeImage(src, idx < 2 ? 'high' : 'low');
+    nearbySources.forEach((src, idx) => {
+      void preloadAndDecodeImage(src, idx === 0 ? 'high' : 'low');
     });
-
-    const remainingImages = project.images.slice(3);
-    if (!remainingImages.length) return;
-
-    const idleCallback = window.requestIdleCallback?.(
-      () => remainingImages.forEach((src: string) => {
-        void preloadAndDecodeImage(src, 'low');
-      }),
-      { timeout: 1500 }
-    );
-
-    const timeoutId = idleCallback == null
-      ? window.setTimeout(() => remainingImages.forEach((src: string) => {
-        void preloadAndDecodeImage(src, 'low');
-      }), 1200)
-      : null;
-
-    return () => {
-      if (idleCallback != null) window.cancelIdleCallback?.(idleCallback);
-      if (timeoutId != null) window.clearTimeout(timeoutId);
-    };
-  }, [usesProjectGridMechanism, project]);
+  }, [adjacentPreloadSource, isLargeGallery, primaryPreloadSource, project.id, usesProjectGridMechanism]);
 
   useEffect(() => {
     if (!isSidebarOpen) {
       setShowThumbnailRail(false);
-      setShouldHydrateThumbnails(false);
+      setHydratedThumbnailIndexes({});
       return;
     }
 
@@ -1552,13 +1849,7 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   }, [usesProjectGridMechanism, isGrid, projectOneHoverEnableDelayMs]);
 
   useEffect(() => {
-    if (!showThumbnailRail) return;
-
-    const timeoutId = window.setTimeout(() => setShouldHydrateThumbnails(true), 180);
-    return () => window.clearTimeout(timeoutId);
-  }, [showThumbnailRail]);
-
-  useEffect(() => {
+    setHydratedThumbnailIndexes({});
     setLoadedThumbnailIndexes({});
   }, [project.id]);
 
@@ -1578,6 +1869,12 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   useEffect(() => () => {
     if (mediaSwitchTimeoutRef.current != null) {
       window.clearTimeout(mediaSwitchTimeoutRef.current);
+    }
+    if (sidebarActivationTimeoutRef.current != null) {
+      window.clearTimeout(sidebarActivationTimeoutRef.current);
+    }
+    if (thumbnailHydrationTimeoutRef.current != null) {
+      window.clearTimeout(thumbnailHydrationTimeoutRef.current);
     }
   }, []);
 
@@ -1614,12 +1911,46 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     };
   }, [modalImageIndex]);
 
+  const getCenteredThumbnailIndex = () => {
+    const rail = thumbnailRailRef.current;
+    if (!rail) return selectedThumbIndex;
+
+    const railBounds = rail.getBoundingClientRect();
+    const railCenter = railBounds.left + railBounds.width / 2;
+    let nearestIndex = selectedThumbIndex;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    thumbnailButtonRefs.current.forEach((button, index) => {
+      if (!button) return;
+      const bounds = button.getBoundingClientRect();
+      const distance = Math.abs(bounds.left + bounds.width / 2 - railCenter);
+      if (distance >= nearestDistance) return;
+      nearestDistance = distance;
+      nearestIndex = index;
+    });
+
+    return nearestIndex;
+  };
+
+  const queueVisibleThumbnailHydration = () => {
+    if (thumbnailHydrationTimeoutRef.current != null) {
+      window.clearTimeout(thumbnailHydrationTimeoutRef.current);
+    }
+    thumbnailHydrationTimeoutRef.current = window.setTimeout(() => {
+      hydrateThumbnailWindow(getCenteredThumbnailIndex());
+      thumbnailHydrationTimeoutRef.current = null;
+    }, 140);
+  };
+
   const updateThumbnailSliderState = () => {
     const rail = thumbnailRailRef.current;
     if (!rail) return;
     const maxScrollLeft = rail.scrollWidth - rail.clientWidth;
     setCanSlideThumbPrev(rail.scrollLeft > 4);
     setCanSlideThumbNext(maxScrollLeft - rail.scrollLeft > 4);
+    if (!isLargeGallery || rail.scrollLeft > 4 || selectedThumbIndex > 0) {
+      queueVisibleThumbnailHydration();
+    }
   };
 
   useEffect(() => {
@@ -1637,11 +1968,21 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   useEffect(() => {
     if (!showThumbnailRail) return;
 
+    hydrateThumbnailWindow(selectedThumbIndex);
+    const rail = thumbnailRailRef.current;
+    if (!rail) return;
     const activeThumb = thumbnailButtonRefs.current[selectedThumbIndex];
-    activeThumb?.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'smooth' });
+    if (activeThumb) {
+      const centeredScrollLeft = activeThumb.offsetLeft + activeThumb.offsetWidth / 2 - rail.clientWidth / 2;
+      const maxScrollLeft = Math.max(0, rail.scrollWidth - rail.clientWidth);
+      rail.scrollTo({
+        left: Math.min(Math.max(0, centeredScrollLeft), maxScrollLeft),
+        behavior: 'smooth',
+      });
+    }
     const timeoutId = window.setTimeout(() => updateThumbnailSliderState(), 180);
     return () => window.clearTimeout(timeoutId);
-  }, [selectedThumbIndex, showThumbnailRail]);
+  }, [hydrateThumbnailWindow, selectedThumbIndex, showThumbnailRail]);
 
   const snapSectionToViewport = () => {
     if (!usesProjectGridMechanism || modalImageIndex != null) return;
@@ -1672,10 +2013,11 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   const handleThumbnailSelect = async (nextIndex: number) => {
     if (!totalProjectImages) return;
 
+    hydrateThumbnailWindow(nextIndex);
     if (modalImageIndex != null) {
       setModalImageIndex(nextIndex);
     } else {
-      snapSectionToViewport();
+      scrollActiveLayoutToViewportCenter();
     }
 
     setSelectedThumbIndex(nextIndex);
@@ -1686,12 +2028,13 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     const requestId = ++mediaRequestRef.current;
     const targetSources = [
       projectImages[nextIndex],
-      projectImages[(nextIndex + 1) % totalProjectImages],
-      projectImages[(nextIndex + 2) % totalProjectImages],
+      isLargeGallery ? undefined : projectImages[(nextIndex + 1) % totalProjectImages],
     ];
 
     await Promise.all(
-      targetSources.map((src, idx) => preloadAndDecodeImage(src, idx === 0 ? 'high' : 'low'))
+      targetSources
+        .filter((src): src is string => Boolean(src))
+        .map((src, idx) => preloadAndDecodeImage(src, idx === 0 ? 'high' : 'low'))
     );
 
     if (mediaRequestRef.current !== requestId) return;
@@ -1712,15 +2055,34 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     mediaStyleOverride?: Partial<typeof artMediaStyle>
   ) => {
     const mediaSrc = projectImages[imageIndex] || project.thumbnail;
+    const videoPoster = project.videoThumbnail || project.coverImage || mediaSrc;
 
-    if (project.video && imageIndex === 0 && (!usesProjectGridMechanism || !isGrid)) {
+    if (project.video && imageIndex === 0) {
+      if (!shouldKeepMediaActive) {
+        return (
+          <img
+            src={videoPoster}
+            {...getResponsiveImageProps(videoPoster)}
+            alt={alt}
+            style={{
+              ...artMediaStyle,
+              ...mediaStyleOverride,
+              transformOrigin: 'center center',
+            }}
+            fetchPriority="low"
+            decoding="async"
+            loading="lazy"
+            draggable={false}
+          />
+        );
+      }
+
       return (
-        <video
-          autoPlay
-          muted
-          loop
-          playsInline
+        <ResilientAutoplayVideo
           src={project.video}
+          poster={videoPoster}
+          alt={alt}
+          startTime={project.videoStartTime}
           className="hero-video"
           style={{
             ...artMediaStyle,
@@ -1734,15 +2096,16 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
     return (
       <img
         src={mediaSrc}
+        {...getResponsiveImageProps(mediaSrc)}
         alt={alt}
         style={{
           ...artMediaStyle,
           ...mediaStyleOverride,
           transformOrigin: 'center center',
         }}
-        fetchPriority={imageIndex === 0 ? 'high' : undefined}
+        fetchPriority={shouldKeepMediaActive && imageIndex === displayedImageIndex ? 'high' : 'low'}
         decoding="async"
-        loading={imageIndex === 0 ? 'eager' : 'lazy'}
+        loading={shouldKeepMediaActive && imageIndex === displayedImageIndex ? 'eager' : 'lazy'}
         draggable={false}
       />
     );
@@ -1755,7 +2118,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
         animate={{
           x: '0%',
           scale: 1,
-          filter: 'brightness(1) saturate(1)',
         }}
         transition={projectOneMainMediaTransition}
         style={{
@@ -1768,7 +2130,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
           backgroundColor: '#000',
           boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0), 0 0 0 rgba(0,0,0,0)',
           transformOrigin: 'left center',
-          willChange: 'transform, filter',
         }}
       >
         <motion.div
@@ -1786,7 +2147,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
             position: 'relative',
             zIndex: 1,
             transformOrigin: 'left center',
-            willChange: 'transform',
           }}
         >
           {renderProjectMedia(imageIndex, project.title, {
@@ -1805,7 +2165,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       y: 12,
       scale: 1.045,
       rotate: direction * 0.65,
-      filter: 'blur(14px) brightness(1.08) saturate(1.05)',
     }),
     center: {
       opacity: 1,
@@ -1813,7 +2172,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       y: 0,
       scale: 1,
       rotate: 0,
-      filter: 'blur(0px) brightness(1) saturate(1)',
       transition: {
         type: 'spring' as const,
         stiffness: 70,
@@ -1827,7 +2185,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       y: -8,
       scale: 0.992,
       rotate: direction * -0.4,
-      filter: 'blur(12px) brightness(0.92)',
       transition: {
         duration: 0.45,
         ease: 'easeInOut' as const,
@@ -1841,14 +2198,12 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       x: direction * 18,
       y: 10,
       scale: 1.03,
-      filter: 'blur(10px) brightness(1.06)',
     }),
     center: {
       opacity: 1,
       x: 0,
       y: 0,
       scale: 1,
-      filter: 'blur(0px) brightness(1)',
       transition: {
         duration: 0.82,
         ease: [0.22, 1, 0.36, 1] as const,
@@ -1859,7 +2214,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
       x: direction * -14,
       y: -7,
       scale: 0.996,
-      filter: 'blur(8px) brightness(0.94)',
       transition: {
         duration: 0.42,
         ease: [0.4, 0, 0.2, 1] as const,
@@ -2135,27 +2489,40 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
   );
 
   return (
-    <div
-      ref={targetRef}
-      style={{
-        position: 'sticky',
-        top: 0,
-        height: isProjectOneCompactLayout ? compactViewportHeight : '100vh',
-        zIndex: index,
-        backgroundColor: '#000',
-        overflow: 'visible'
-      }}
-    >
-      <motion.div 
+    <>
+      <motion.div
+        data-project-stage-content="true"
+        data-active-layout-centered={shouldCenterActiveLayout ? 'true' : 'false'}
+        initial={false}
+        animate={{
+          y: shouldCenterActiveLayout ? desktopProjectBrowsingOffset : '0px',
+        }}
+        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
         style={{
-          scale,
-          borderRadius,
           width: '100%',
           height: '100%',
-          transformOrigin: 'center',
-          overflow: 'hidden'
+          backgroundColor: '#000',
+          position: 'relative',
+          overflow: 'hidden',
+          isolation: 'isolate',
+          contain: 'paint',
         }}
       >
+        <motion.div
+          data-project-visual-layer="true"
+          style={{
+            scale,
+            borderRadius,
+            clipPath: stageClipPath,
+            width: '100%',
+            height: '100%',
+            transformOrigin: 'center',
+            overflow: 'hidden',
+            backgroundColor: '#000',
+            backfaceVisibility: 'hidden',
+            willChange: 'transform, border-radius',
+          }}
+        >
         <div
           className="hero-section"
           style={{
@@ -2193,7 +2560,6 @@ const HeroSection = ({ project, index, isLast }: { project: any; index: number; 
               minWidth: 0,
 backfaceVisibility: 'hidden',
               transform: 'translateZ(0)',
-              willChange: isProjectOneCompactLayout ? 'height, flex-basis' : 'width, flex-basis',
               overflow: 'hidden',
             }}
           >
@@ -2237,11 +2603,9 @@ backfaceVisibility: 'hidden',
                    contain: 'paint style' 
                  }}
               >
-              <Link
-                to={`/project/${project.id}`}
-                state={{ ...detailLinkState, initialImageIndex: 0 }}
+              <div
                 onMouseEnter={() => {
-                  cursor.set({ mode: 'link' });
+                  cursor.set({ mode: 'default' });
                   if (!usesProjectGridMechanism || isProjectOneHoverReady) {
                     setHoveredMediaPanel('main');
                   }
@@ -2265,7 +2629,7 @@ backfaceVisibility: 'hidden',
                       width: '100%',
                       height: '100%',
                       gridArea: '1 / 1 / 2 / 2',
-                      willChange: 'transform, opacity, filter',
+                      willChange: 'transform, opacity',
                     }}
                   >
                     {usesProjectGridMechanism
@@ -2292,7 +2656,7 @@ backfaceVisibility: 'hidden',
                     />
                   )}
                 </AnimatePresence>
-              </Link>
+              </div>
             </motion.div>
 
             {/* Bottom Images — Reverted to flex/height animation */}
@@ -2316,7 +2680,6 @@ backfaceVisibility: 'hidden',
                   marginTop: isProjectOnePhoneLayout ? '8px' : undefined,
                   gap: isProjectOnePhoneLayout ? '8px' : '2px',
                   background: '#000',
-                  willChange: 'height, opacity',
                   overflow: 'hidden',
                   borderRadius: isProjectOnePhoneLayout ? '12px' : undefined,
                   backfaceVisibility: 'hidden',
@@ -2324,11 +2687,9 @@ backfaceVisibility: 'hidden',
                 }}
               >
                 <div className="focus-layer" style={{ width: '100%', height: '100%' }}>
-                  <Link
-                    to={`/project/${project.id}`}
-                    state={{ ...detailLinkState, initialImageIndex: 0 }}
+                  <div
                     onMouseEnter={() => {
-                      cursor.set({ mode: 'link' });
+                      cursor.set({ mode: 'default' });
                       if (isProjectOneHoverReady) {
                         setHoveredMediaPanel('detail-a');
                       }
@@ -2352,7 +2713,7 @@ backfaceVisibility: 'hidden',
                           width: '100%',
                           height: '100%',
                           gridArea: '1 / 1 / 2 / 2',
-                          willChange: 'transform, opacity, filter',
+                          willChange: 'transform, opacity',
                         }}
                       >
                         {renderProjectMedia((displayedImageIndex + 1) % totalProjectImages, 'Detail 1', {
@@ -2360,17 +2721,106 @@ backfaceVisibility: 'hidden',
                         })}
                       </motion.div>
                     </AnimatePresence>
-                  </Link>
+                  </div>
                 </div>
               </motion.div>
             )}
 
-            {/* Subtle scrim for text readability */}
-            <div style={{
-              position: 'absolute', inset: 0,
-              background: 'linear-gradient(to top, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.1) 60%, rgba(0,0,0,0.55) 100%)',
-              pointerEvents: 'none', zIndex: 1,
-            }} />
+            {!isProjectOnePhoneLayout && (
+              <>
+                <motion.div
+                  data-cinematic-overlay={isCinematicIntroVisible ? 'visible' : 'hidden'}
+                  initial={false}
+                  animate={{ opacity: isCinematicIntroVisible ? 1 : 0 }}
+                  transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    background: 'linear-gradient(to bottom, rgba(0,0,0,0.86) 0%, rgba(0,0,0,0.48) 30%, rgba(0,0,0,0.44) 62%, rgba(0,0,0,0.9) 100%)',
+                    pointerEvents: 'none',
+                    zIndex: 2,
+                    willChange: 'opacity',
+                  }}
+                />
+                <motion.div
+                  data-cinematic-title={titleState}
+                  initial={false}
+                  animate={isCinematicIntroVisible
+                    ? { opacity: 1, y: 0, scale: 1 }
+                    : { opacity: 0, y: -10, scale: 0.985 }}
+                  transition={{ duration: 0.52, ease: [0.22, 1, 0.36, 1] }}
+                  aria-hidden={!isCinematicIntroVisible}
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    zIndex: 3,
+                    display: 'grid',
+                    placeItems: 'center',
+                    padding: 'clamp(28px, 5vw, 84px)',
+                    boxSizing: 'border-box',
+                    pointerEvents: 'none',
+                    willChange: 'transform, opacity',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: projectClientLogo ? 'clamp(14px, 1.6vw, 22px)' : 0,
+                      width: '100%',
+                    }}
+                  >
+                    {projectClientLogo && (
+                      <>
+                        <img
+                          data-cinematic-client-logo={projectClientLogo.alt}
+                          src={projectClientLogo.src}
+                          alt={projectClientLogo.alt}
+                          style={{
+                            display: 'block',
+                            width: 'clamp(350px, 40vw, 700px)',
+                            maxWidth: '72vw',
+                            height: 'auto',
+                            objectFit: 'contain',
+                            filter: 'grayscale(1) brightness(0) invert(1)',
+                            opacity: 0.88,
+                          }}
+                        />
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: 'block',
+                            width: '52px',
+                            height: '1px',
+                            background: 'rgba(255,255,255,0.48)',
+                          }}
+                        />
+                      </>
+                    )}
+                    <h2
+                      style={{
+                        maxWidth: '18ch',
+                        margin: 0,
+                        color: '#fff',
+                        fontFamily: '"Inter Display", Inter, sans-serif',
+                        fontSize: 'clamp(29px, 3.1vw, 55px)',
+                        fontWeight: 900,
+                        lineHeight: 1.02,
+                        letterSpacing: 0,
+                        textAlign: 'center',
+                        textTransform: 'uppercase',
+                        textWrap: 'balance',
+                        overflowWrap: 'anywhere',
+                        textShadow: '0 3px 28px rgba(0,0,0,0.9)',
+                      }}
+                    >
+                      {displayTitle}
+                    </h2>
+                  </div>
+                </motion.div>
+              </>
+            )}
 
 
 
@@ -2438,7 +2888,6 @@ backfaceVisibility: 'hidden',
                   contain: 'layout paint style',
                   backfaceVisibility: 'hidden',
                   transform: 'translateZ(0)',
-                  willChange: isProjectOneCompactLayout ? 'height, transform, opacity' : 'width, transform, opacity',
                 }}
               >
                 <motion.div
@@ -2464,7 +2913,6 @@ backfaceVisibility: 'hidden',
                     boxSizing: 'border-box',
                     overflowY: isProjectOneCompactLayout ? 'auto' : undefined,
                     scrollbarWidth: isProjectOneCompactLayout ? 'none' : undefined,
-                    willChange: 'transform, opacity, filter'
                   }}
                 >
                   {!isProjectOnePhoneLayout && (
@@ -2759,6 +3207,7 @@ backfaceVisibility: 'hidden',
                               type="button"
                               onClick={() => void handleThumbnailSelect(thumbIndex)}
                               onMouseEnter={() => {
+                                hydrateThumbnailWindow(thumbIndex);
                                 cursor.set({ mode: 'link' });
                               }}
                               onMouseLeave={() => {
@@ -2812,9 +3261,10 @@ backfaceVisibility: 'hidden',
                               >
                                 {String(thumbIndex + 1).padStart(2, '0')}
                               </span>
-                              {shouldHydrateThumbnails && (
+                              {hydratedThumbnailIndexes[thumbIndex] && (
                                 <motion.img
                                   src={thumbSrc}
+                                  {...getResponsiveImageProps(thumbSrc, '80px')}
                                   alt=""
                                   onLoad={() => {
                                     setLoadedThumbnailIndexes((prev) => (
@@ -2868,6 +3318,18 @@ backfaceVisibility: 'hidden',
           )}
 
         </div>
+        </motion.div>
+        <div
+          data-project-seam-guard="true"
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 20,
+            pointerEvents: 'none',
+            boxShadow: 'inset 0 2px 0 #000, inset 0 -2px 0 #000',
+          }}
+        />
       </motion.div>
       {gridModeTooltipLayer}
 
@@ -2971,6 +3433,7 @@ backfaceVisibility: 'hidden',
                 <motion.img
                   key={`modal-img-${modalImageIndex}`}
                   src={projectImages[modalImageIndex]}
+                  {...getResponsiveImageProps(projectImages[modalImageIndex])}
                   alt={`${project.title} preview`}
                   draggable={false}
                   onClick={(event) => event.stopPropagation()}
@@ -3032,6 +3495,7 @@ backfaceVisibility: 'hidden',
                   >
                     <img
                       src={thumbSrc}
+                      {...getResponsiveImageProps(thumbSrc, '72px')}
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       draggable={false}
                       alt={`Thumbnail ${thumbIndex + 1}`}
@@ -3043,44 +3507,411 @@ backfaceVisibility: 'hidden',
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
 
+const HeroSection = ({
+  project,
+  index,
+  isLast,
+}: {
+  project: any;
+  index: number;
+  isLast?: boolean;
+}) => {
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const targetRef = useRef<HTMLDivElement>(null);
+  const [isNearViewport, setIsNearViewport] = useState(false);
+  const [isMediaActive, setIsMediaActive] = useState(false);
+  const [isActiveLayout, setIsActiveLayout] = useState(false);
+  const isPhoneViewport = useIsPhone();
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+
+    const activationObserver = new IntersectionObserver(
+      ([entry]) => setIsNearViewport(entry.isIntersecting),
+      { rootMargin: '150% 0px', threshold: 0 }
+    );
+    const mediaObserver = new IntersectionObserver(
+      ([entry]) => setIsMediaActive(entry.isIntersecting),
+      { rootMargin: '100% 0px -90% 0px', threshold: 0 }
+    );
+
+    activationObserver.observe(sentinel);
+    mediaObserver.observe(sentinel);
+
+    return () => {
+      activationObserver.disconnect();
+      mediaObserver.disconnect();
+    };
+  }, []);
+
+  const shellImage = getProjectCoverImage(project);
+
+  return (
+    <>
+      <div
+        ref={sentinelRef}
+        aria-hidden="true"
+        style={{ height: '1px', marginBottom: '-1px', pointerEvents: 'none' }}
+      />
+      <div
+        ref={targetRef}
+        data-project-section={project.id}
+        data-interactive={isNearViewport ? 'true' : 'false'}
+        data-media-active={isMediaActive ? 'true' : 'false'}
+        style={{
+          position: 'sticky',
+          top: 0,
+          height: isPhoneViewport ? compactViewportHeight : desktopProjectStageHeight,
+          zIndex: isActiveLayout ? 1000 + index : index,
+          backgroundColor: '#000',
+          overflow: 'visible',
+          boxShadow: '0 -2px 0 #000, 0 2px 0 #000',
+        }}
+      >
+        {isNearViewport ? (
+          <HeroSectionStage
+            project={project}
+            isLast={isLast}
+            targetRef={targetRef}
+            isMediaActive={isMediaActive}
+            onActiveLayoutChange={setIsActiveLayout}
+          />
+        ) : (
+          <img
+            src={shellImage}
+            {...getResponsiveImageProps(shellImage)}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            decoding="async"
+            draggable={false}
+            style={{
+              width: '100%',
+              height: '100%',
+              display: 'block',
+              objectFit: 'cover',
+              backgroundColor: '#000',
+              contain: 'layout paint style',
+            }}
+          />
+        )}
+      </div>
+    </>
+  );
+};
 
 
-const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => (
-  <section className="mobile-home-projects" aria-label="Featured projects">
-    <div className="mobile-home-projects-frame">
-      {projects.map((project, projectIndex) => {
-        const desktopThumbnail = Array.isArray(project.images) && project.images.length
-          ? project.images[project.images.length - 1]
-          : project.thumbnail;
 
-        return (
-          <Link
-            key={project.id}
-            to={`/project/${project.id}`}
-            state={{ initialImageIndex: 0 }}
-            className="mobile-home-project-thumbnail"
-            aria-label={`Open ${project.title} project`}
-          >
-            <img
-              src={desktopThumbnail}
-              alt={project.title}
-              loading={projectIndex === 0 ? 'eager' : 'lazy'}
-              decoding="async"
-              draggable={false}
-            />
-          </Link>
-        );
-      })}
-    </div>
-  </section>
-);
+const getMobileProjectGalleryImages = (project: any) => {
+  const baseImages = Array.isArray(project.images) && project.images.length
+    ? [...project.images].reverse()
+    : [project.thumbnail].filter(Boolean);
+  const coverImage = project.coverImage || baseImages[0];
+  const coverIndex = baseImages.indexOf(coverImage);
+
+  return coverIndex > 0
+    ? [baseImages[coverIndex], ...baseImages.filter((_: string, index: number) => index !== coverIndex)]
+    : baseImages;
+};
+
+const mobileProjectMediaDwellMs = 1500;
+const mobileProjectMediaTransitionSeconds = 0.42;
+
+const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(
+    projects[0]?.id ?? null
+  );
+  const [activeMediaState, setActiveMediaState] = useState({
+    projectId: null as string | null,
+    imageIndex: 0,
+    sequence: 0,
+  });
+  const [isPageVisible, setIsPageVisible] = useState(() => !document.hidden);
+  const projectRefs = useRef<Array<HTMLAnchorElement | null>>([]);
+  const viewportCandidatesRef = useRef(new Set<number>());
+  const isBottomOverrideActiveRef = useRef(false);
+  const prefersReducedMotion = useReducedMotion();
+
+  const resolveActiveProject = useCallback(() => {
+    if (isBottomOverrideActiveRef.current) {
+      setActiveProjectId(projects[projects.length - 1]?.id ?? null);
+      return;
+    }
+
+    const viewportCenter = window.innerHeight / 2;
+    let nearestIndex: number | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    viewportCandidatesRef.current.forEach((projectIndex) => {
+      const projectElement = projectRefs.current[projectIndex];
+      if (!projectElement) return;
+
+      const bounds = projectElement.getBoundingClientRect();
+      const projectCenter = bounds.top + bounds.height / 2;
+      const distance = Math.abs(projectCenter - viewportCenter);
+      if (distance >= nearestDistance) return;
+
+      nearestDistance = distance;
+      nearestIndex = projectIndex;
+    });
+
+    if (nearestIndex == null) {
+      setActiveProjectId(null);
+      return;
+    }
+
+    const nextProjectId = projects[nearestIndex]?.id ?? null;
+    setActiveProjectId((currentProjectId) => {
+      const currentIndex = projects.findIndex((project) => project.id === currentProjectId);
+      const currentElement = currentIndex >= 0 ? projectRefs.current[currentIndex] : null;
+      if (!currentElement || !viewportCandidatesRef.current.has(currentIndex)) {
+        return nextProjectId;
+      }
+
+      const currentBounds = currentElement.getBoundingClientRect();
+      const currentDistance = Math.abs(
+        currentBounds.top + currentBounds.height / 2 - viewportCenter
+      );
+
+      return currentDistance <= nearestDistance + 24 ? currentProjectId : nextProjectId;
+    });
+  }, [projects]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => setIsPageVisible(!document.hidden);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  useEffect(() => {
+    setActiveMediaState({
+      projectId: activeProjectId,
+      imageIndex: 0,
+      sequence: 0,
+    });
+  }, [activeProjectId]);
+
+  useEffect(() => {
+    if (!activeProjectId || !isPageVisible) return;
+
+    const activeProject = projects.find((project) => project.id === activeProjectId);
+    if (!activeProject || activeProject.video) return;
+
+    const galleryImages = getMobileProjectGalleryImages(activeProject);
+    if (
+      galleryImages.length <= 1 ||
+      activeMediaState.projectId !== activeProjectId
+    ) {
+      return;
+    }
+
+    const nextImageIndex = (activeMediaState.imageIndex + 1) % galleryImages.length;
+    void preloadAndDecodeImage(galleryImages[nextImageIndex], 'low');
+
+    const mediaAdvanceTimeout = window.setTimeout(() => {
+      setActiveMediaState((currentState) => {
+        if (currentState.projectId !== activeProjectId) return currentState;
+        return {
+          projectId: activeProjectId,
+          imageIndex: (currentState.imageIndex + 1) % galleryImages.length,
+          sequence: currentState.sequence + 1,
+        };
+      });
+    }, mobileProjectMediaDwellMs);
+
+    return () => window.clearTimeout(mediaAdvanceTimeout);
+  }, [activeMediaState, activeProjectId, isPageVisible, projects]);
+
+  useEffect(() => {
+    let resolveFrameId: number | null = null;
+    const viewportInset = Math.round(window.innerHeight * 0.42);
+    const queueActiveProjectResolution = () => {
+      if (resolveFrameId != null) window.cancelAnimationFrame(resolveFrameId);
+      resolveFrameId = window.requestAnimationFrame(resolveActiveProject);
+    };
+    const centerObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        const projectIndex = Number((entry.target as HTMLElement).dataset.mobileProjectIndex);
+        if (!Number.isInteger(projectIndex)) return;
+
+        if (entry.isIntersecting) {
+          viewportCandidatesRef.current.add(projectIndex);
+        } else {
+          viewportCandidatesRef.current.delete(projectIndex);
+        }
+      });
+
+      queueActiveProjectResolution();
+    }, {
+      rootMargin: `-${viewportInset}px 0px -${viewportInset}px 0px`,
+      threshold: [0, 0.01, 0.5, 1],
+    });
+    const bottomObserver = new IntersectionObserver(([entry]) => {
+      if (!entry) return;
+
+      const wasBottomOverrideActive = isBottomOverrideActiveRef.current;
+      if (!wasBottomOverrideActive && entry.intersectionRatio >= 0.82) {
+        isBottomOverrideActiveRef.current = true;
+      } else if (wasBottomOverrideActive && entry.intersectionRatio <= 0.68) {
+        isBottomOverrideActiveRef.current = false;
+      }
+
+      if (wasBottomOverrideActive === isBottomOverrideActiveRef.current) return;
+      if (isBottomOverrideActiveRef.current) {
+        setActiveProjectId(projects[projects.length - 1]?.id ?? null);
+      } else {
+        queueActiveProjectResolution();
+      }
+    }, {
+      threshold: [0, 0.68, 0.82, 1],
+    });
+
+    projectRefs.current.forEach((projectElement) => {
+      if (projectElement) centerObserver.observe(projectElement);
+    });
+    const lastProjectElement = projectRefs.current[projects.length - 1];
+    if (lastProjectElement) bottomObserver.observe(lastProjectElement);
+
+    return () => {
+      centerObserver.disconnect();
+      bottomObserver.disconnect();
+      viewportCandidatesRef.current.clear();
+      isBottomOverrideActiveRef.current = false;
+      if (resolveFrameId != null) window.cancelAnimationFrame(resolveFrameId);
+    };
+  }, [resolveActiveProject]);
+
+  return (
+    <section className="mobile-home-projects" aria-label="Featured projects">
+      <div className="mobile-home-projects-frame">
+        {projects.map((project, projectIndex) => {
+          const activeProjectIndex = Math.max(
+            0,
+            projects.findIndex((candidate) => candidate.id === activeProjectId)
+          );
+          const desktopThumbnail = getProjectCoverImage(project);
+          const projectClientLogo = getProjectClientLogo(project.id);
+          const isActive = project.id === activeProjectId;
+          const shouldRenderMedia = Math.abs(projectIndex - activeProjectIndex) <= 1;
+          const galleryImages = getMobileProjectGalleryImages(project);
+          const activeImageIndex = (
+            isActive &&
+            activeMediaState.projectId === project.id
+          )
+            ? activeMediaState.imageIndex
+            : 0;
+          const activeImage = project.video
+            ? (project.videoThumbnail || desktopThumbnail)
+            : (galleryImages[activeImageIndex] || desktopThumbnail);
+          const mediaSequence = (
+            isActive &&
+            activeMediaState.projectId === project.id
+          )
+            ? activeMediaState.sequence
+            : 0;
+          const previousImageIndex = (
+            activeImageIndex - 1 + galleryImages.length
+          ) % galleryImages.length;
+          const previousImage = galleryImages[previousImageIndex] || desktopThumbnail;
+          const shouldPlayVideo = Boolean(project.video && isActive && isPageVisible);
+
+          return (
+            <Link
+              key={project.id}
+              ref={(node) => {
+                projectRefs.current[projectIndex] = node;
+              }}
+              to={`/project/${project.id}`}
+              state={{ initialImageIndex: 0 }}
+              className={`mobile-home-project-thumbnail${isActive ? ' is-viewport-active' : ''}`}
+              data-mobile-project-index={projectIndex}
+              data-viewport-active={isActive ? 'true' : 'false'}
+              data-active-media-index={isActive ? activeImageIndex : 0}
+              aria-label={`Open ${project.title} project`}
+            >
+              <div className="mobile-home-project-media" aria-hidden="true">
+                <img
+                  src={desktopThumbnail}
+                  {...getResponsiveImageProps(desktopThumbnail)}
+                  alt=""
+                  className="mobile-home-project-media-element mobile-home-project-media-cover"
+                  loading="eager"
+                  fetchPriority="low"
+                  decoding="async"
+                  draggable={false}
+                />
+                {shouldRenderMedia && (shouldPlayVideo ? (
+                  <ResilientAutoplayVideo
+                    src={project.video}
+                    poster={project.videoThumbnail || desktopThumbnail}
+                    alt={project.title}
+                    startTime={project.videoStartTime}
+                    className="mobile-home-project-media-element"
+                  />
+                ) : mediaSequence > 0 ? (
+                  <>
+                    <img
+                      src={previousImage}
+                      {...getResponsiveImageProps(previousImage)}
+                      alt=""
+                      className="mobile-home-project-media-element"
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                    />
+                    <motion.img
+                      key={`${project.id}-${mediaSequence}-${activeImage}`}
+                      src={activeImage}
+                      {...getResponsiveImageProps(activeImage)}
+                      alt=""
+                      className="mobile-home-project-media-element"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{
+                        duration: prefersReducedMotion ? 0 : mobileProjectMediaTransitionSeconds,
+                        ease: [0.22, 1, 0.36, 1],
+                      }}
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                    />
+                  </>
+                ) : null)}
+              </div>
+              <span
+                className="mobile-home-project-copy"
+                aria-hidden={!isActive}
+              >
+                {projectClientLogo && (
+                  <span className="mobile-home-project-client-logo-frame">
+                    <img
+                      src={projectClientLogo.src}
+                      alt=""
+                      className="mobile-home-project-client-logo"
+                      draggable={false}
+                    />
+                  </span>
+                )}
+                <span className="mobile-home-project-divider" aria-hidden="true" />
+                <span className="mobile-home-project-title">
+                  {project.title}
+                </span>
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+};
 
 const Home = () => {
-  const isPhoneViewport = useIsPhone();
+  const isCompactProjectViewport = useIsMobile();
   const order = [
     'Leviathan RCG',
     'Love, Death & Robot Season 4 : Scream of the Tyrannosaurus',
@@ -3096,7 +3927,7 @@ const Home = () => {
 
   const orderedProjects: any[] = order.map(title => projectsData.find(p => p.title === title)).filter(Boolean);
   const videoProjects = orderedProjects.filter(p => p.video);
-  const homepageProjects = orderedProjects.slice(1, 4);
+  const homepageProjects = orderedProjects.slice(1);
 
   return (
     <motion.div
@@ -3106,7 +3937,7 @@ const Home = () => {
 
       <AboutSection />
 
-      {isPhoneViewport ? (
+      {isCompactProjectViewport ? (
         <MobileProjectThumbnails projects={homepageProjects} />
       ) : (
         homepageProjects.map((project, idx, arr) => {
@@ -3429,7 +4260,14 @@ function AnimatedRoutes() {
         >
           <Routes location={location}>
             <Route path="/" element={<Home />} />
-            <Route path="/project/:id" element={<ProjectDetail />} />
+            <Route
+              path="/project/:id"
+              element={(
+                <React.Suspense fallback={<div style={{ minHeight: '100vh', background: '#000' }} />}>
+                  <ProjectDetail />
+                </React.Suspense>
+              )}
+            />
           </Routes>
         </motion.div>
       </AnimatePresence>

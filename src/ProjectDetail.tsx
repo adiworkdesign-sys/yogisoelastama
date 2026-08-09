@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import projectsData from './projects.json';
 import {
@@ -9,6 +9,7 @@ import {
   getResponsiveImageProps,
   getResponsiveVideoSource,
 } from './media';
+import { getProjectClientLogo } from './projectBranding';
 
 const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -216,6 +217,9 @@ const getProjectCoverImage = (project?: {
 const nextProjectCoverCache = new Map<string, Promise<void>>();
 const nextProjectsPool = projectsData.slice(1);
 const nextProjectMediaDwellMs = 1800;
+const nextProjectMobileMediaDwellMs = 1500;
+const nextProjectMobileMediaTransitionSeconds = 0.42;
+const freezeNextProjectTransitionEvent = 'freezeNextProjectTransition';
 
 const getNextProjectPreviewImages = (project: (typeof projectsData)[number]) => {
   const cover = getProjectCoverImage(project);
@@ -267,6 +271,7 @@ const NextProjectPreviewVideo = ({
   startTime?: number;
 }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const isTransitionFrozenRef = useRef(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const lightweightSrc = getLightweightVideoSource(src);
   const videoSrc = startTime > 0 ? `${lightweightSrc}#t=${startTime}` : lightweightSrc;
@@ -277,7 +282,7 @@ const NextProjectPreviewVideo = ({
 
     let previousTime = video.currentTime;
     const attemptPlayback = () => {
-      if (document.hidden) return;
+      if (document.hidden || isTransitionFrozenRef.current) return;
       const playback = video.play();
       playback?.catch(() => {
         setIsPlaying(false);
@@ -287,7 +292,12 @@ const NextProjectPreviewVideo = ({
       window.setTimeout(attemptPlayback, delay)
     ));
     const handleCanPlay = () => attemptPlayback();
+    const freezePlayback = () => {
+      isTransitionFrozenRef.current = true;
+      video.pause();
+    };
     const watchdogId = window.setInterval(() => {
+      if (isTransitionFrozenRef.current) return;
       const currentTime = video.currentTime;
       const isAdvancing = currentTime > previousTime + 0.02 || currentTime < previousTime;
       setIsPlaying(
@@ -302,12 +312,14 @@ const NextProjectPreviewVideo = ({
 
     video.addEventListener('loadeddata', handleCanPlay);
     video.addEventListener('canplay', handleCanPlay);
+    window.addEventListener(freezeNextProjectTransitionEvent, freezePlayback);
 
     return () => {
       retryTimeouts.forEach((timeoutId) => window.clearTimeout(timeoutId));
       window.clearInterval(watchdogId);
       video.removeEventListener('loadeddata', handleCanPlay);
       video.removeEventListener('canplay', handleCanPlay);
+      window.removeEventListener(freezeNextProjectTransitionEvent, freezePlayback);
       video.pause();
     };
   }, [videoSrc]);
@@ -327,10 +339,16 @@ const NextProjectPreviewVideo = ({
       animate={{ opacity: isPlaying ? 1 : 0 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
-      onPlaying={() => setIsPlaying(true)}
-      onWaiting={() => setIsPlaying(false)}
-      onStalled={() => setIsPlaying(false)}
-      onPause={() => setIsPlaying(false)}
+      onPlaying={(event) => {
+        if (isTransitionFrozenRef.current) {
+          event.currentTarget.pause();
+          return;
+        }
+        setIsPlaying(true);
+      }}
+      onWaiting={() => !isTransitionFrozenRef.current && setIsPlaying(false)}
+      onStalled={() => !isTransitionFrozenRef.current && setIsPlaying(false)}
+      onPause={() => !isTransitionFrozenRef.current && setIsPlaying(false)}
       onError={() => setIsPlaying(false)}
     />
   );
@@ -356,13 +374,20 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
   const sectionRef = useRef<HTMLElement | null>(null);
   const previewRef = useRef<HTMLAnchorElement | null>(null);
   const previewRequestRef = useRef(0);
+  const isTransitionFrozenRef = useRef(false);
   const mobileProjectRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const mobileViewportCandidatesRef = useRef(new Set<number>());
   const isMobileBottomOverrideActiveRef = useRef(false);
   const [activeMobileProjectId, setActiveMobileProjectId] = useState<string | null>(
     nextProjects[0]?.id ?? null,
   );
+  const [mobileMediaState, setMobileMediaState] = useState({
+    projectId: null as string | null,
+    imageIndex: 0,
+    sequence: 0,
+  });
   const [isMobileNextSectionVisible, setIsMobileNextSectionVisible] = useState(false);
+  const prefersReducedMotion = useReducedMotion();
 
   const activeProject = (
     nextProjects.find((item) => item.id === activeProjectId) ||
@@ -389,6 +414,11 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
     desktopMediaState.projectId === activeProject?.id &&
     desktopMediaState.showVideo
   );
+  const activeProjectClientLogo = getProjectClientLogo(activeProject?.id ?? '');
+  const shouldShowDesktopCoverIdentity = Boolean(
+    engagedDesktopProjectId !== activeProject?.id ||
+    (!desktopMediaState.showVideo && desktopMediaState.sequence === 0)
+  );
 
   const getPreviewTargetWidth = () => {
     const previewWidth = previewRef.current?.clientWidth || window.innerWidth;
@@ -398,7 +428,24 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
     );
   };
 
+  const freezeNextProjectTransition = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    if (
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
+    isTransitionFrozenRef.current = true;
+    sectionRef.current?.getAnimations({ subtree: true }).forEach((animation) => animation.pause());
+    window.dispatchEvent(new CustomEvent(freezeNextProjectTransitionEvent));
+  };
+
   const selectPreview = async (nextProject: (typeof projectsData)[number]) => {
+    if (isTransitionFrozenRef.current) return;
     const requestId = ++previewRequestRef.current;
     setEngagedDesktopProjectId(nextProject.id);
     setDesktopMediaState({
@@ -417,6 +464,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
   };
 
   const stopPreview = (projectId: string) => {
+    if (isTransitionFrozenRef.current) return;
     previewRequestRef.current += 1;
     setEngagedDesktopProjectId((currentId) => currentId === projectId ? null : currentId);
     setDesktopMediaState((currentState) => (
@@ -427,6 +475,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
   };
 
   const resolveActiveMobileProject = useCallback(() => {
+    if (isTransitionFrozenRef.current) return;
     if (isMobileBottomOverrideActiveRef.current) {
       setActiveMobileProjectId(nextProjects[nextProjects.length - 1]?.id ?? null);
       return;
@@ -500,6 +549,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
   useEffect(() => {
     if (
       isMobileDetailLayout ||
+      isTransitionFrozenRef.current ||
       !isPreviewPageVisible ||
       !activeProject ||
       engagedDesktopProjectId !== activeProject.id ||
@@ -525,7 +575,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
 
     const advanceTimeout = window.setTimeout(async () => {
       await nextImagePreload;
-      if (cancelled) return;
+      if (cancelled || isTransitionFrozenRef.current) return;
 
       setDesktopMediaState((currentState) => {
         if (
@@ -570,6 +620,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
     };
 
     const centerObserver = new IntersectionObserver((entries) => {
+      if (isTransitionFrozenRef.current) return;
       entries.forEach((entry) => {
         const projectIndex = Number((entry.target as HTMLElement).dataset.mobileProjectIndex);
         if (!Number.isInteger(projectIndex)) return;
@@ -587,6 +638,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
     });
 
     const bottomObserver = new IntersectionObserver(([entry]) => {
+      if (isTransitionFrozenRef.current) return;
       if (!entry) return;
 
       const wasBottomOverrideActive = isMobileBottomOverrideActiveRef.current;
@@ -630,12 +682,77 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
     if (!section) return;
 
     const observer = new IntersectionObserver(([entry]) => {
+      if (isTransitionFrozenRef.current) return;
       setIsMobileNextSectionVisible(entry.isIntersecting);
     }, { threshold: 0.04 });
 
     observer.observe(section);
     return () => observer.disconnect();
   }, [isMobileDetailLayout]);
+
+  useEffect(() => {
+    setMobileMediaState({
+      projectId: activeMobileProjectId,
+      imageIndex: 0,
+      sequence: 0,
+    });
+  }, [activeMobileProjectId]);
+
+  useEffect(() => {
+    if (
+      !isMobileDetailLayout ||
+      isTransitionFrozenRef.current ||
+      !activeMobileProjectId ||
+      !isMobileNextSectionVisible ||
+      !isPreviewPageVisible ||
+      mobileMediaState.projectId !== activeMobileProjectId
+    ) {
+      return;
+    }
+
+    const activeMobileProject = nextProjects.find(
+      (nextProject) => nextProject.id === activeMobileProjectId,
+    );
+    if (!activeMobileProject || ('video' in activeMobileProject && activeMobileProject.video)) return;
+
+    const previewImages = getNextProjectPreviewImages(activeMobileProject);
+    if (previewImages.length <= 1) return;
+
+    const nextImageIndex = (mobileMediaState.imageIndex + 1) % previewImages.length;
+    const nextImagePreload = preloadNextProjectCover(
+      previewImages[nextImageIndex],
+      Math.min(1536, Math.ceil(window.innerWidth * Math.min(window.devicePixelRatio || 1, 2))),
+      'low',
+    );
+    let cancelled = false;
+
+    const advanceTimeout = window.setTimeout(async () => {
+      await nextImagePreload;
+      if (cancelled || isTransitionFrozenRef.current) return;
+
+      setMobileMediaState((currentState) => (
+        currentState.projectId === activeMobileProjectId
+          ? {
+              projectId: activeMobileProjectId,
+              imageIndex: nextImageIndex,
+              sequence: currentState.sequence + 1,
+            }
+          : currentState
+      ));
+    }, nextProjectMobileMediaDwellMs);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(advanceTimeout);
+    };
+  }, [
+    activeMobileProjectId,
+    isMobileDetailLayout,
+    isMobileNextSectionVisible,
+    isPreviewPageVisible,
+    mobileMediaState,
+    nextProjects,
+  ]);
 
   if (!activeProject || !activeCover) return null;
 
@@ -658,7 +775,24 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
         <nav className="project-next-mobile-list" aria-label="Next projects">
           {nextProjects.map((nextProject, index) => {
             const cover = getProjectCoverImage(nextProject);
+            const previewImages = getNextProjectPreviewImages(nextProject);
+            const projectClientLogo = getProjectClientLogo(nextProject.id);
             const isActive = nextProject.id === activeMobileProjectId;
+            const activeImageIndex = (
+              isActive && mobileMediaState.projectId === nextProject.id
+            )
+              ? mobileMediaState.imageIndex
+              : 0;
+            const activeImage = previewImages[activeImageIndex] || cover;
+            const mediaSequence = (
+              isActive && mobileMediaState.projectId === nextProject.id
+            )
+              ? mobileMediaState.sequence
+              : 0;
+            const previousImageIndex = (
+              activeImageIndex - 1 + previewImages.length
+            ) % previewImages.length;
+            const previousImage = previewImages[previousImageIndex] || cover;
             const mobileVideo = 'video' in nextProject ? nextProject.video : undefined;
             const mobileVideoStartTime = (
               'videoStartTime' in nextProject ? nextProject.videoStartTime : 0
@@ -677,7 +811,11 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                   mobileProjectRefs.current[index] = node;
                 }}
                 to={`/project/${nextProject.id}`}
-                state={{ initialImageIndex: 0 }}
+                state={{
+                  transitionSource: 'project-one-grid',
+                  initialImageIndex: 0,
+                }}
+                onClickCapture={freezeNextProjectTransition}
                 className={`mobile-home-project-thumbnail project-next-mobile-card${isActive ? ' is-viewport-active' : ''}`}
                 data-mobile-project-index={index}
                 data-viewport-active={isActive ? 'true' : 'false'}
@@ -693,6 +831,37 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                     decoding="async"
                     draggable={false}
                   />
+                  {isActive && !mobileVideo && mediaSequence > 0 && (
+                    <>
+                      <img
+                        src={previousImage}
+                        {...getResponsiveImageProps(previousImage, '100vw')}
+                        alt=""
+                        className="mobile-home-project-media-element"
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                      />
+                      <motion.img
+                        key={`${nextProject.id}-${mediaSequence}-${activeImage}`}
+                        src={activeImage}
+                        {...getResponsiveImageProps(activeImage, '100vw')}
+                        alt=""
+                        className="mobile-home-project-media-element"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{
+                          duration: prefersReducedMotion
+                            ? 0
+                            : nextProjectMobileMediaTransitionSeconds,
+                          ease: [0.22, 1, 0.36, 1],
+                        }}
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
+                      />
+                    </>
+                  )}
                   <AnimatePresence>
                     {shouldPlayMobileVideo && mobileVideo && (
                       <NextProjectPreviewVideo
@@ -705,6 +874,16 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                   </AnimatePresence>
                 </div>
                 <span className="mobile-home-project-copy" aria-hidden={!isActive}>
+                  {projectClientLogo && (
+                    <span className="mobile-home-project-client-logo-frame">
+                      <img
+                        src={projectClientLogo.src}
+                        alt=""
+                        className="mobile-home-project-client-logo"
+                        draggable={false}
+                      />
+                    </span>
+                  )}
                   <span className="mobile-home-project-divider" aria-hidden="true" />
                   <span className="mobile-home-project-title">
                     {nextProject.title}
@@ -741,7 +920,11 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                 <Link
                   key={nextProject.id}
                   to={`/project/${nextProject.id}`}
-                  state={{ initialImageIndex: 0 }}
+                  state={{
+                    transitionSource: 'project-one-grid',
+                    initialImageIndex: 0,
+                  }}
+                  onClickCapture={freezeNextProjectTransition}
                   className={`project-next-link${isActive ? ' is-active' : ''}`}
                   onPointerEnter={() => void selectPreview(nextProject)}
                   onPointerLeave={() => stopPreview(nextProject.id)}
@@ -760,13 +943,18 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
         <Link
           ref={previewRef}
           to={`/project/${activeProject.id}`}
-          state={{ initialImageIndex: 0 }}
+          state={{
+            transitionSource: 'project-one-grid',
+            initialImageIndex: 0,
+          }}
+          onClickCapture={freezeNextProjectTransition}
           className="project-next-preview"
           aria-label={`Open ${activeProject.title}`}
           onPointerEnter={() => void selectPreview(activeProject)}
           onPointerLeave={() => stopPreview(activeProject.id)}
           onFocus={() => void selectPreview(activeProject)}
           onBlur={() => stopPreview(activeProject.id)}
+          data-cover-identity-visible={shouldShowDesktopCoverIdentity ? 'true' : 'false'}
         >
           <AnimatePresence initial={false} mode="sync">
             <motion.img
@@ -798,6 +986,18 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
             )}
           </AnimatePresence>
           <div className="project-next-preview-scrim" aria-hidden="true" />
+          {activeProjectClientLogo && (
+            <div className="project-next-preview-copy" aria-hidden={!shouldShowDesktopCoverIdentity}>
+              <span className="project-next-preview-client-logo-frame">
+                <img
+                  src={activeProjectClientLogo.src}
+                  alt={activeProjectClientLogo.alt}
+                  className="project-next-preview-client-logo"
+                  draggable={false}
+                />
+              </span>
+            </div>
+          )}
         </Link>
       </div>
     </motion.section>
@@ -1323,8 +1523,8 @@ const ProjectDetail = () => {
               right: '40px',
               zIndex: 9990,
               borderRadius: '100px',
-              background: hoverBtt ? '#ff6b00' : 'rgba(12, 12, 12, 0.92)',
-              border: `1px solid ${hoverBtt ? '#ff6b00' : 'rgba(255,255,255,0.22)'}`,
+              background: hoverBtt ? '#ffffff' : 'rgba(12, 12, 12, 0.92)',
+              border: `1px solid ${hoverBtt ? '#ffffff' : 'rgba(255,255,255,0.22)'}`,
               backdropFilter: 'blur(20px)',
               WebkitBackdropFilter: 'blur(20px)',
               cursor: 'pointer',
@@ -1333,10 +1533,10 @@ const ProjectDetail = () => {
               gap: '8px',
               padding: '12px 20px 12px 16px',
               outline: 'none',
-              color: '#fff',
-              transition: 'background 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease',
+              color: hoverBtt ? '#050505' : '#ffffff',
+              transition: 'background 0.22s ease, border-color 0.22s ease, color 0.22s ease, box-shadow 0.22s ease',
               boxShadow: hoverBtt
-                ? '0 8px 32px rgba(255,107,0,0.28)'
+                ? '0 8px 32px rgba(255,255,255,0.16)'
                 : '0 4px 24px rgba(0,0,0,0.5)',
             }}
             whileTap={{ scale: 0.94 }}

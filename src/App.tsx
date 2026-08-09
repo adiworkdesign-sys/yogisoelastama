@@ -9,6 +9,7 @@ import {
   getResponsiveImageProps,
   getResponsiveVideoSource,
 } from './media';
+import { getProjectClientLogo, netflixLogoSrc, primeLogoSrc } from './projectBranding';
 
 const ProjectDetail = React.lazy(() => import('./ProjectDetail'));
 
@@ -32,23 +33,11 @@ const useIsPhone = () => {
   return isPhone;
 };
 
-const netflixLogoSrc = new URL('../Netflix logo.svg', import.meta.url).href;
-const primeLogoSrc = new URL('../Amazon_Prime_Video_logo 1.svg', import.meta.url).href;
 const compactViewportHeight = '100svh';
 const desktopProjectStageHeight = 'clamp(560px, 50vw, 82vh)';
 const desktopProjectBrowsingOffset = `calc((100vh - ${desktopProjectStageHeight}) / 2)`;
 const desktopProjectSidebarActivationDelayMs = 1500;
 const videoPosterStartTimeSeconds = 0.25;
-
-const getProjectClientLogo = (projectId: string) => {
-  if (projectId === '02 - LDR Scream of Tyrannosaurus') {
-    return { src: netflixLogoSrc, alt: 'Netflix' };
-  }
-  if (projectId === '03 - Secret Level Concord') {
-    return { src: primeLogoSrc, alt: 'Prime Video' };
-  }
-  return null;
-};
 
 const withVideoPosterStartTime = (
   src: string,
@@ -3827,7 +3816,10 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
                 projectRefs.current[projectIndex] = node;
               }}
               to={`/project/${project.id}`}
-              state={{ initialImageIndex: 0 }}
+              state={{
+                transitionSource: 'project-one-grid',
+                initialImageIndex: 0,
+              }}
               className={`mobile-home-project-thumbnail${isActive ? ' is-viewport-active' : ''}`}
               data-mobile-project-index={projectIndex}
               data-viewport-active={isActive ? 'true' : 'false'}
@@ -3994,7 +3986,9 @@ function AnimatedRoutes() {
 
   if (location.pathname !== prevLocationRef.current) {
     const fromPath = prevLocationRef.current;
-    const isProjectOneToDetailTransition = prevLocationRef.current === '/'
+    const isProjectOneToDetailTransition = (
+      fromPath === '/' || fromPath.startsWith('/project/')
+    )
       && location.pathname.startsWith('/project/')
       && locationState?.transitionSource === 'project-one-grid';
     const isProjectOneToHomeTransition = fromPath.startsWith('/project/')
@@ -4025,7 +4019,9 @@ function AnimatedRoutes() {
     exitingRouteKind: exitingRouteKindRef.current,
     viewportHeight: typeof window !== 'undefined' ? window.innerHeight : 0,
   };
-  const showProjectOneForwardBackground = !isHome && routeAnimationModeRef.current === 'project-one-to-detail';
+  const showProjectOneForwardBackground = !isHome
+    && exitingRouteKindRef.current === 'home'
+    && routeAnimationModeRef.current === 'project-one-to-detail';
   const routeContainerOverflow = isHome || routeAnimationModeRef.current === 'project-one-to-detail' || routeAnimationModeRef.current === 'project-one-to-home'
     ? 'hidden'
     : 'visible';
@@ -4122,13 +4118,15 @@ function AnimatedRoutes() {
           }
     ),
     exit: (custom: { mode: RouteAnimationMode; prevScrollY: number; exitingRouteKind: 'home' | 'detail'; viewportHeight: number }) => (
-      custom.exitingRouteKind === 'home' && custom.mode === 'project-one-to-detail'
+      custom.mode === 'project-one-to-detail'
         ? {
-            zIndex: 5,
+            zIndex: custom.exitingRouteKind === 'home' ? 5 : 10,
             position: 'fixed' as const,
-            top: -custom.prevScrollY,
+            top: custom.exitingRouteKind === 'detail' ? 0 : -custom.prevScrollY,
             left: 0,
             width: '100%',
+            height: custom.exitingRouteKind === 'detail' ? '100vh' : 'auto',
+            overflow: custom.exitingRouteKind === 'detail' ? 'hidden' : 'visible',
             y: projectOneForwardPushY,
             opacity: 1,
           }
@@ -4150,6 +4148,30 @@ function AnimatedRoutes() {
             width: '100%',
             y: custom.exitingRouteKind === 'home' ? -80 : '100vh',
             opacity: custom.exitingRouteKind === 'home' ? 0 : 1,
+          }
+    ),
+  };
+
+  const pageContentVariants: Variants = {
+    enterHome: { position: 'relative', top: 0, left: 0, width: '100%' },
+    enterDetail: { position: 'relative', top: 0, left: 0, width: '100%' },
+    centerHome: { position: 'relative', top: 0, left: 0, width: '100%' },
+    centerDetail: { position: 'relative', top: 0, left: 0, width: '100%' },
+    exit: (custom: { mode: RouteAnimationMode; prevScrollY: number; exitingRouteKind: 'home' | 'detail' }) => (
+      custom.mode === 'project-one-to-detail' && custom.exitingRouteKind === 'detail'
+        ? {
+            position: 'absolute',
+            top: -custom.prevScrollY,
+            left: 0,
+            width: '100%',
+            transition: { duration: 0 },
+          }
+        : {
+            position: 'relative',
+            top: 0,
+            left: 0,
+            width: '100%',
+            transition: { duration: 0 },
           }
     ),
   };
@@ -4258,17 +4280,23 @@ function AnimatedRoutes() {
            variants={pageTransitionVariants}
            transition={projectOneForwardTransition}
         >
-          <Routes location={location}>
-            <Route path="/" element={<Home />} />
-            <Route
-              path="/project/:id"
-              element={(
-                <React.Suspense fallback={<div style={{ minHeight: '100vh', background: '#000' }} />}>
-                  <ProjectDetail />
-                </React.Suspense>
-              )}
-            />
-          </Routes>
+          <motion.div
+            custom={routeAnimationCustom}
+            variants={pageContentVariants}
+            style={{ width: '100%' }}
+          >
+            <Routes location={location}>
+              <Route path="/" element={<Home />} />
+              <Route
+                path="/project/:id"
+                element={(
+                  <React.Suspense fallback={<div style={{ minHeight: '100vh', background: '#000' }} />}>
+                    <ProjectDetail />
+                  </React.Suspense>
+                )}
+              />
+            </Routes>
+          </motion.div>
         </motion.div>
       </AnimatePresence>
     </div>

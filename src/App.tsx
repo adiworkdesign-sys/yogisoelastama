@@ -10,6 +10,7 @@ import {
   getResponsiveVideoSource,
 } from './media';
 import { getProjectClientLogo, netflixLogoSrc, primeLogoSrc } from './projectBranding';
+import { getProjectPath } from './projectRoutes';
 
 const ProjectDetail = React.lazy(() => import('./ProjectDetail'));
 
@@ -675,18 +676,26 @@ const SocialIconLink = ({ href, ariaLabel, size, icon, external = false }: Socia
 
 const Navbar = () => {
   const { pathname } = useLocation();
-  const navigate = useNavigate();
   const isDetail = pathname.startsWith('/project/');
 
   return (
     <nav className="navbar" style={{ zIndex: 100 }}>
       {isDetail ? (
-        <div
-          onClick={() => navigate(-1)}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', pointerEvents: 'auto' }}
+        <Link
+          to="/"
+          state={{ transitionSource: 'project-one-grid' }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: 'inherit',
+            cursor: 'pointer',
+            pointerEvents: 'auto',
+            textDecoration: 'none',
+          }}
         >
           <ArrowLeft size={16} /> <span>BACK</span>
-        </div>
+        </Link>
       ) : (
         <span className="navbar-brand-home">
           <ScrambleLink to="/">YOGI SOELASTAMA</ScrambleLink>
@@ -705,14 +714,14 @@ const FEATURED_IDS = [
 ];
 const featuredProjects = FEATURED_IDS.map((id) => projectsData.find((p: any) => p.id === id)).filter(Boolean) as any[];
 const SHORT_TITLE: Record<string, string> = {
-  '01 - Leviathan RCG': 'Leviathan RCG',
+  '01 - Leviathan RCG': 'RCG Mining Tool',
   '02 - LDR Scream of Tyrannosaurus': 'Love, Death + Robots S4',
   '03 - Secret Level Concord': 'Secret Level — Concord',
   '04 - Leviathan Caterpillar': 'Leviathan Caterpillar',
-  '05 - Leviathan Icebreaker': 'Leviathan Icebreaker',
+  '05 - Leviathan Icebreaker': 'Icebreaker',
   '06 - Fallen Angel': 'Fallen Angel',
   '07 - Long Exile': 'Long Exile',
-  '08 - MTG Dawn of Phyrexian Invasion': 'MTG — Phyrexian Invasion',
+  '08 - MTG Dawn of Phyrexian Invasion': 'Magic the Gathering : Dawn of the Phyrexian Invasion',
   '09 - MTG March of the Machines': 'MTG — March of Machines',
   '10 - Godkiller': 'Godkiller',
 };
@@ -778,9 +787,7 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
   const project = projects[currentIndex];
   const videoPoster = getProjectCoverImage(project);
 
-  let displayTitle = project?.title || '';
-  if (project?.title === 'LDR Scream of Tyrannosaurus') displayTitle = 'Love Death & Robots Season 4: Scream of the Tyrannosaurus';
-  if (project?.title === 'Secret Level Concord') displayTitle = 'Secret Level Season 1 : Concord';
+  const displayTitle = project?.title || '';
   const scrambledDisplayTitle = useScrambleText(displayTitle, playHeroIntro, 90);
 
   const paginate = (idx: number, dir?: number) => {
@@ -846,8 +853,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
             </AnimatePresence>
 
             <Link
-              to={`/project/${project.id}`}
-              state={{ initialImageIndex: 0 }}
+              to={getProjectPath(project)}
+              state={{ transitionSource: 'project-one-grid', initialImageIndex: 0 }}
               aria-label={`Open ${project.title}`}
               className="mobile-hero-full-link"
             />
@@ -870,8 +877,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
               style={{ display: 'none' }}
             >
               <Link
-                to={`/project/${project.id}`}
-                state={{ initialImageIndex: 0 }}
+                to={getProjectPath(project)}
+                state={{ transitionSource: 'project-one-grid', initialImageIndex: 0 }}
                 aria-label={`Open ${project.title}`}
                 style={{ position: 'relative', width: isTablet ? 'min(100%, 860px)' : 'min(100%, calc((100svh - 300px) * 0.8), 390px)', aspectRatio: isTablet ? '16 / 9' : '4 / 5', borderRadius: '16px', overflow: 'hidden', background: '#050505', boxShadow: '0 28px 70px rgba(0,0,0,0.62)', border: '1px solid rgba(255,255,255,0.10)', textDecoration: 'none' }}
               >
@@ -974,8 +981,8 @@ const CarouselHeroSection = ({ projects }: { projects: any[] }) => {
                 style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}
               >
                 <Link
-                  to={`/project/${project.id}`}
-                  state={{ initialImageIndex: 0 }}
+                  to={getProjectPath(project)}
+                  state={{ transitionSource: 'project-one-grid', initialImageIndex: 0 }}
                   style={{ display: 'block', width: '100%', height: '100%' }}
                   onMouseEnter={() => cursor.set({ mode: 'link' })}
                   onMouseLeave={() => cursor.set({ mode: 'default' })}
@@ -1660,9 +1667,7 @@ const HeroSectionStage = ({
     ));
   const totalProjectImages = projectImages.length;
 
-  let displayTitle = project.title;
-  if (project.title === 'LDR Scream of Tyrannosaurus') displayTitle = 'Love Death + Robots S4: Scream of the Tyrannosaurus';
-  if (project.title === 'Secret Level Concord') displayTitle = 'Secret Level S1: Concord';
+  const displayTitle = project.title;
 
   const isGrid = titleState === 'hidden' && usesProjectGridMechanism;
   const isProjectOneCompactLayout = usesProjectGridMechanism && isCompactViewport;
@@ -2242,7 +2247,7 @@ const HeroSectionStage = ({
       holdDetailTimeoutRef.current = null;
       setIsHoldingDetailOpen(false);
       cursor.set({ mode: 'default' });
-      navigate(`/project/${project.id}`, {
+      navigate(getProjectPath(project), {
         state: { ...detailLinkState, initialImageIndex: 0 },
       });
     }, HOLD_TO_DETAIL_MS);
@@ -2768,7 +2773,7 @@ backfaceVisibility: 'hidden',
                           alt={projectClientLogo.alt}
                           style={{
                             display: 'block',
-                            width: 'clamp(350px, 40vw, 700px)',
+                            width: projectClientLogo.desktopWidth ?? 'clamp(350px, 40vw, 700px)',
                             maxWidth: '72vw',
                             height: 'auto',
                             objectFit: 'contain',
@@ -2911,14 +2916,14 @@ backfaceVisibility: 'hidden',
                       aria-label={`Open ${displayTitle} project detail`}
                       onClick={() => {
                         cursor.set({ mode: 'default' });
-                        navigate(`/project/${project.id}`, {
+                        navigate(getProjectPath(project), {
                           state: { ...detailLinkState, initialImageIndex: 0 },
                         });
                       }}
                       onKeyDown={(event) => {
                         if (event.key !== 'Enter' && event.key !== ' ') return;
                         event.preventDefault();
-                        navigate(`/project/${project.id}`, {
+                        navigate(getProjectPath(project), {
                           state: { ...detailLinkState, initialImageIndex: 0 },
                         });
                       }}
@@ -3815,7 +3820,7 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
               ref={(node) => {
                 projectRefs.current[projectIndex] = node;
               }}
-              to={`/project/${project.id}`}
+              to={getProjectPath(project)}
               state={{
                 transitionSource: 'project-one-grid',
                 initialImageIndex: 0,
@@ -3905,19 +3910,19 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
 const Home = () => {
   const isCompactProjectViewport = useIsMobile();
   const order = [
-    'Leviathan RCG',
-    'Love, Death & Robot Season 4 : Scream of the Tyrannosaurus',
-    'Secret Level Concord',
-    'Leviathan Caterpillar',
-    'Leviathan Icebreaker',
-    'Fallen Angel',
-    'Long Exile',
-    'MTG Dawn of Phyrexian Invasion',
-    'MTG March of the Machines',
-    'Godkiller'
+    '01 - Leviathan RCG',
+    '02 - LDR Scream of Tyrannosaurus',
+    '03 - Secret Level Concord',
+    '04 - Leviathan Caterpillar',
+    '05 - Leviathan Icebreaker',
+    '06 - Fallen Angel',
+    '07 - Long Exile',
+    '08 - MTG Dawn of Phyrexian Invasion',
+    '09 - MTG March of the Machines',
+    '10 - Godkiller',
   ];
 
-  const orderedProjects: any[] = order.map(title => projectsData.find(p => p.title === title)).filter(Boolean);
+  const orderedProjects: any[] = order.map(id => projectsData.find(project => project.id === id)).filter(Boolean);
   const videoProjects = orderedProjects.filter(p => p.video);
   const homepageProjects = orderedProjects.slice(1);
 
@@ -3993,7 +3998,10 @@ function AnimatedRoutes() {
       && locationState?.transitionSource === 'project-one-grid';
     const isProjectOneToHomeTransition = fromPath.startsWith('/project/')
       && location.pathname === '/'
-      && detailTransitionSourceRef.current === 'project-one-grid';
+      && (
+        detailTransitionSourceRef.current === 'project-one-grid'
+        || locationState?.transitionSource === 'project-one-grid'
+      );
 
     routeAnimationModeRef.current = isProjectOneToDetailTransition
       ? 'project-one-to-detail'
@@ -4180,6 +4188,7 @@ function AnimatedRoutes() {
     <div style={{ position: 'relative', width: '100%', minHeight: '100vh', overflow: routeContainerOverflow }}>
       {showProjectOneForwardBackground && (
         <motion.div
+          className="project-one-forward-background"
           initial={{ y: 0 }}
           animate={{ y: projectOneForwardPushY }}
           transition={projectOneForwardTransition}

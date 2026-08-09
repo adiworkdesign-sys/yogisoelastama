@@ -498,6 +498,14 @@ button, [role="button"] {
   min-width: 0;
 }
 
+@media (min-width: 1281px) {
+  .project-detail-info-col-title { grid-column: 1; }
+  .project-detail-info-col-role { grid-column: 2; }
+  .project-detail-info-col-client { grid-column: 3; }
+  .project-detail-info-col-year { grid-column: 4; }
+  .project-detail-info-col-overview { grid-column: 5; }
+}
+
 .project-detail-info-label {
   min-height: 16px;
   font-size: 12px;
@@ -994,6 +1002,11 @@ button, [role="button"] {
   align-items: stretch;
 }
 
+.project-footer-grid-info-only {
+  grid-template-columns: minmax(0, 1fr);
+  height: auto;
+}
+
 .project-footer-info {
   display: grid;
   gap: 0;
@@ -1005,21 +1018,37 @@ button, [role="button"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0;
-  align-items: start;
+  align-items: stretch;
   width: 100%;
   height: 100%;
 }
 
 .footer-info-block {
   display: grid;
+  grid-template-rows: 16px auto;
   gap: 12px;
+  align-content: start;
   align-items: start;
   min-height: 0;
   padding: 18px 48px;
 }
 
+.footer-info-block .project-detail-info-value {
+  color: #fff;
+}
+
 .footer-info-block:first-child {
   grid-column: 1 / -1;
+}
+
+@media (min-width: 1025px) {
+  .footer-info-row-three-columns {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .footer-info-row-three-columns .footer-info-block:first-child {
+    grid-column: auto;
+  }
 }
 
 .project-footer-media {
@@ -1898,28 +1927,28 @@ button, [role="button"] {
     gap: 24px clamp(32px, 5vw, 64px) !important;
   }
 
-  .project-detail-info-col:nth-child(1) {
+  .project-detail-info-col-title {
     grid-column: 1 / -1;
     grid-row: 1;
     width: 100%;
   }
 
-  .project-detail-info-col:nth-child(2) {
+  .project-detail-info-col-role {
     grid-column: 1;
     grid-row: 2;
   }
 
-  .project-detail-info-col:nth-child(3) {
+  .project-detail-info-col-client {
     grid-column: 1;
     grid-row: 3;
   }
 
-  .project-detail-info-col:nth-child(4) {
+  .project-detail-info-col-year {
     grid-column: 2;
     grid-row: 2;
   }
 
-  .project-detail-info-col:nth-child(5) {
+  .project-detail-info-col-overview {
     grid-column: 2;
     grid-row: 3;
   }

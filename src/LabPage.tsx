@@ -7,6 +7,7 @@ import {
 import gsap from 'gsap';
 import { SplitText } from 'gsap/SplitText';
 import projectsData from './projects.json';
+import { getProjectPath } from './projectRoutes';
 
 gsap.registerPlugin(SplitText);
 
@@ -255,7 +256,7 @@ const CinematicShowcase = () => {
           </div>
 
           <Link
-            to={`/project/${project.id}`}
+            to={getProjectPath(project)}
             className="cs-view"
             style={{
               flexShrink: 0, display: 'flex', alignItems: 'center', gap: '10px',
@@ -452,7 +453,7 @@ const IdentityBand = () => {
           viewport={{ once: true, amount: 0.4 }}
           transition={{ duration: 1, ease: EASE }}
         >
-          <Link to={`/project/${renderProject.id}`} style={{ display: 'block' }}>
+          <Link to={getProjectPath(renderProject)} style={{ display: 'block' }}>
             <div style={{
               width: 'clamp(220px, 24vw, 360px)', aspectRatio: '4 / 5',
               borderRadius: '12px', overflow: 'hidden', border: `1px solid ${C.hair}`,
@@ -534,7 +535,7 @@ const ProjectSlider = () => {
             transition={{ duration: 0.7, ease: EASE_IO }}
             style={{ position: 'absolute', inset: 0 }}
           >
-            <Link to={`/project/${project.id}`} style={{ display: 'block', width: '100%', height: '100%' }}>
+            <Link to={getProjectPath(project)} style={{ display: 'block', width: '100%', height: '100%' }}>
               <motion.img
                 src={project.thumbnail}
                 alt={SHORT[project.id]}

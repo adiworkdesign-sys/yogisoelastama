@@ -10,6 +10,7 @@ import {
   getResponsiveVideoSource,
 } from './media';
 import { getProjectClientLogo } from './projectBranding';
+import { findProjectByRouteParam, getProjectPath } from './projectRoutes';
 
 const YouTubeCard = ({ youtubeId }: { youtubeId: string }) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -126,6 +127,10 @@ const ViewportAutoplayVideo = ({
     />
   );
 };
+
+const hasProjectText = (value: unknown) => (
+  typeof value === 'string' && value.trim() !== '' && value.trim() !== '\u2014'
+);
 
 const DETAIL_STATIC_IMAGE_COUNT = 2;
 const DETAIL_THUMBNAIL_WINDOW_RADIUS = 4;
@@ -810,7 +815,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                 ref={(node) => {
                   mobileProjectRefs.current[index] = node;
                 }}
-                to={`/project/${nextProject.id}`}
+                to={getProjectPath(nextProject)}
                 state={{
                   transitionSource: 'project-one-grid',
                   initialImageIndex: 0,
@@ -919,7 +924,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
               return (
                 <Link
                   key={nextProject.id}
-                  to={`/project/${nextProject.id}`}
+                  to={getProjectPath(nextProject)}
                   state={{
                     transitionSource: 'project-one-grid',
                     initialImageIndex: 0,
@@ -942,7 +947,7 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
 
         <Link
           ref={previewRef}
-          to={`/project/${activeProject.id}`}
+          to={getProjectPath(activeProject)}
           state={{
             transitionSource: 'project-one-grid',
             initialImageIndex: 0,
@@ -1018,7 +1023,7 @@ const ProjectDetail = () => {
   const carouselThumbRailRef = useRef<HTMLDivElement | null>(null);
   const carouselMediaRequestRef = useRef(0);
 
-  const project = projectsData.find((item) => item.id === id);
+  const project = findProjectByRouteParam(projectsData, id);
   const initialImageIndex: number = (location.state as any)?.initialImageIndex ?? 0;
   const detailImages = project ? [...project.images].reverse() : [];
   const detailThumbs = project && (project as any).thumbFolder
@@ -1224,6 +1229,12 @@ const ProjectDetail = () => {
   // ─── Early return after hooks ───────────────────────────────────────────────
   if (!project) return null;
 
+  const hasFooterVideo = Boolean((project as any).youtubeId);
+  const role = hasProjectText(project.role) ? project.role : '';
+  const client = hasProjectText(project.client) ? project.client : '';
+  const year = hasProjectText(project.year) ? project.year : '';
+  const overview = hasProjectText(project.overview) ? project.overview : '';
+
   return (
     <motion.div
       className="project-detail"
@@ -1233,25 +1244,25 @@ const ProjectDetail = () => {
       <div className="project-detail-chrome">
         <div className="project-detail-header">
           <div className="project-detail-info-grid">
-            <div className="project-detail-info-col">
+            <div className="project-detail-info-col project-detail-info-col-title">
               <span className="project-detail-info-label">Title</span>
               <h1>{project.title}</h1>
             </div>
-            <div className="project-detail-info-col">
+            <div className="project-detail-info-col project-detail-info-col-role">
               <span className="project-detail-info-label">Role</span>
-              <p className="project-detail-info-value">{project.role || ''}</p>
+              <p className="project-detail-info-value">{role}</p>
             </div>
-            <div className="project-detail-info-col">
+            <div className="project-detail-info-col project-detail-info-col-client">
               <span className="project-detail-info-label">Client</span>
-              <p className="project-detail-info-value">{project.client || ''}</p>
+              <p className="project-detail-info-value">{client}</p>
             </div>
-            <div className="project-detail-info-col">
+            <div className="project-detail-info-col project-detail-info-col-year">
               <span className="project-detail-info-label">Year</span>
-              <p className="project-detail-info-value">{project.year || ''}</p>
+              <p className="project-detail-info-value">{year}</p>
             </div>
-            <div className="project-detail-info-col">
+            <div className="project-detail-info-col project-detail-info-col-overview">
               <span className="project-detail-info-label">Overview</span>
-              <p className="project-detail-info-value">{project.overview || ''}</p>
+              <p className="project-detail-info-value">{overview}</p>
             </div>
           </div>
         </div>
@@ -1469,9 +1480,9 @@ const ProjectDetail = () => {
           viewport={{ once: true, margin: '-100px' }}
           transition={{ duration: 0.7 }}
         >
-          <div className="project-footer-grid">
+          <div className={`project-footer-grid${hasFooterVideo ? '' : ' project-footer-grid-info-only'}`}>
             <div className="project-footer-info">
-              <div className="footer-info-row">
+              <div className={`footer-info-row${hasFooterVideo ? '' : ' footer-info-row-three-columns'}`}>
                 {(project as any).credit && (
                   <div className="footer-info-block">
                     <span className="project-detail-info-label">Credit</span>
@@ -1492,11 +1503,11 @@ const ProjectDetail = () => {
                 )}
               </div>
             </div>
-            <div className="project-footer-media">
-              {(project as any).youtubeId && (
+            {hasFooterVideo && (
+              <div className="project-footer-media">
                 <YouTubeCard youtubeId={(project as any).youtubeId} />
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </motion.section>
       )}

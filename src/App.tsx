@@ -65,6 +65,7 @@ const imageDecodeCache = new Map<string, Promise<void>>();
 type RouteAnimationMode = 'default' | 'project-one-to-detail' | 'project-one-to-home';
 
 const compactRouteSnapshotClassName = 'compact-route-transition-snapshot';
+const compactRouteSnapshotOverscanPx = 96;
 
 const createCompactRouteTransitionSnapshot = () => {
   if (typeof window === 'undefined' || window.innerWidth > 1280) return;
@@ -72,16 +73,26 @@ const createCompactRouteTransitionSnapshot = () => {
   document.querySelector(`.${compactRouteSnapshotClassName}`)?.remove();
   const source = document.querySelector<HTMLElement>('[data-route-page-shell="true"]');
   if (!source) return;
+  const capturedScrollY = window.scrollY;
+  const viewportHeight = Math.ceil(window.visualViewport?.height || window.innerHeight);
+
+  lenisInstance?.stop();
+  document.documentElement.style.overflowX = 'hidden';
+  document.documentElement.style.overflowY = 'scroll';
+  document.body.style.overflow = 'hidden';
 
   const snapshot = document.createElement('div');
   snapshot.className = compactRouteSnapshotClassName;
   snapshot.setAttribute('aria-hidden', 'true');
+  snapshot.dataset.viewportHeight = viewportHeight.toString();
   snapshot.style.cssText = [
     'position:fixed',
-    'inset:0',
+    `top:${-compactRouteSnapshotOverscanPx}px`,
+    'right:0',
+    `bottom:${-compactRouteSnapshotOverscanPx}px`,
+    'left:0',
     'z-index:15',
     'width:100%',
-    'height:100svh',
     'overflow:hidden',
     'pointer-events:none',
     'background:#000',
@@ -92,7 +103,7 @@ const createCompactRouteTransitionSnapshot = () => {
   const viewportContent = document.createElement('div');
   viewportContent.style.cssText = [
     'position:absolute',
-    `top:${-window.scrollY}px`,
+    `top:${-capturedScrollY + compactRouteSnapshotOverscanPx}px`,
     'left:0',
     'width:100%',
   ].join(';');
@@ -103,8 +114,8 @@ const createCompactRouteTransitionSnapshot = () => {
   const isInViewport = (element: Element) => {
     const bounds = element.getBoundingClientRect();
     return (
-      bounds.bottom > 0 &&
-      bounds.top < window.innerHeight &&
+      bounds.bottom > -compactRouteSnapshotOverscanPx &&
+      bounds.top < viewportHeight + compactRouteSnapshotOverscanPx &&
       bounds.right > 0 &&
       bounds.left < window.innerWidth
     );
@@ -140,11 +151,19 @@ const createCompactRouteTransitionSnapshot = () => {
   viewportContent.appendChild(clonedPage);
   snapshot.appendChild(viewportContent);
   document.body.appendChild(snapshot);
+};
+
+const startCompactRouteTransitionSnapshot = () => {
+  const snapshot = document.querySelector<HTMLElement>(`.${compactRouteSnapshotClassName}`);
+  if (!snapshot || snapshot.dataset.transitionStarted === 'true') return;
+
+  snapshot.dataset.transitionStarted = 'true';
+  const viewportHeight = Number(snapshot.dataset.viewportHeight) || window.innerHeight;
 
   const animation = snapshot.animate(
     [
       { transform: 'translate3d(0, 0, 0)' },
-      { transform: 'translate3d(0, -100svh, 0)' },
+      { transform: `translate3d(0, -${viewportHeight}px, 0)` },
     ],
     {
       duration: 1800,
@@ -4361,6 +4380,9 @@ function AnimatedRoutes() {
            onAnimationStart={() => { 
              document.body.classList.add('is-transitioning');
              if (routeAnimationModeRef.current === 'project-one-to-detail') {
+               if (isCompactTransitionViewport) {
+                 startCompactRouteTransitionSnapshot();
+               }
                document.documentElement.style.overflowX = 'hidden';
                document.documentElement.style.overflowY = 'scroll';
                document.body.style.overflow = 'hidden';

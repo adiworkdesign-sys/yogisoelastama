@@ -64,6 +64,100 @@ const getProjectCoverImage = (project?: {
 const imageDecodeCache = new Map<string, Promise<void>>();
 type RouteAnimationMode = 'default' | 'project-one-to-detail' | 'project-one-to-home';
 
+const compactRouteSnapshotClassName = 'compact-route-transition-snapshot';
+
+const createCompactRouteTransitionSnapshot = () => {
+  if (typeof window === 'undefined' || window.innerWidth > 1280) return;
+
+  document.querySelector(`.${compactRouteSnapshotClassName}`)?.remove();
+  const source = document.querySelector<HTMLElement>('[data-route-page-shell="true"]');
+  if (!source) return;
+
+  const snapshot = document.createElement('div');
+  snapshot.className = compactRouteSnapshotClassName;
+  snapshot.setAttribute('aria-hidden', 'true');
+  snapshot.style.cssText = [
+    'position:fixed',
+    'inset:0',
+    'z-index:15',
+    'width:100%',
+    'height:100svh',
+    'overflow:hidden',
+    'pointer-events:none',
+    'background:#000',
+    'contain:strict',
+    'will-change:transform',
+  ].join(';');
+
+  const viewportContent = document.createElement('div');
+  viewportContent.style.cssText = [
+    'position:absolute',
+    `top:${-window.scrollY}px`,
+    'left:0',
+    'width:100%',
+  ].join(';');
+
+  const clonedPage = source.cloneNode(true) as HTMLElement;
+  clonedPage.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
+  const transparentPixel = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  const isInViewport = (element: Element) => {
+    const bounds = element.getBoundingClientRect();
+    return (
+      bounds.bottom > 0 &&
+      bounds.top < window.innerHeight &&
+      bounds.right > 0 &&
+      bounds.left < window.innerWidth
+    );
+  };
+
+  const sourceImages = Array.from(source.querySelectorAll<HTMLImageElement>('img'));
+  clonedPage.querySelectorAll<HTMLImageElement>('img').forEach((image, index) => {
+    const sourceImage = sourceImages[index];
+    image.removeAttribute('srcset');
+    image.removeAttribute('sizes');
+    image.src = sourceImage && isInViewport(sourceImage)
+      ? (sourceImage.currentSrc || sourceImage.src)
+      : transparentPixel;
+    image.loading = 'eager';
+    image.decoding = 'sync';
+  });
+
+  const sourceVideos = Array.from(source.querySelectorAll<HTMLVideoElement>('video'));
+  clonedPage.querySelectorAll<HTMLVideoElement>('video').forEach((video, index) => {
+    const sourceVideo = sourceVideos[index];
+    const replacement = document.createElement('img');
+    replacement.className = video.className;
+    replacement.style.cssText = video.style.cssText;
+    replacement.alt = '';
+    replacement.decoding = 'sync';
+    replacement.draggable = false;
+    replacement.src = sourceVideo && isInViewport(sourceVideo)
+      ? (sourceVideo.poster || video.poster || sourceVideo.currentSrc || video.currentSrc)
+      : transparentPixel;
+    video.replaceWith(replacement);
+  });
+
+  viewportContent.appendChild(clonedPage);
+  snapshot.appendChild(viewportContent);
+  document.body.appendChild(snapshot);
+
+  const animation = snapshot.animate(
+    [
+      { transform: 'translate3d(0, 0, 0)' },
+      { transform: 'translate3d(0, -100svh, 0)' },
+    ],
+    {
+      duration: 1800,
+      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      fill: 'forwards',
+    },
+  );
+  void animation.finished.then(
+    () => snapshot.remove(),
+    () => snapshot.remove(),
+  );
+};
+
 
 const preloadAndDecodeImage = (src?: string, priority: 'high' | 'low' = 'low') => {
   if (!src || typeof window === 'undefined') return Promise.resolve();
@@ -3902,9 +3996,11 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
                     </span>
                   </>
                 )}
-                <span className="mobile-home-project-title">
-                  {project.title}
-                </span>
+                {!projectClientLogo && (
+                  <span className="mobile-home-project-title">
+                    {project.title}
+                  </span>
+                )}
               </span>
             </Link>
           );
@@ -3963,6 +4059,7 @@ const Home = () => {
 
 function AnimatedRoutes() {
   const location = useLocation();
+  const isCompactTransitionViewport = useIsMobile();
   const prevLocationRef = useRef(location.pathname);
   const prevScrollY = useRef(typeof window !== 'undefined' ? window.scrollY : 0);
   const routeAnimationModeRef = useRef<RouteAnimationMode>('default');
@@ -3970,6 +4067,41 @@ function AnimatedRoutes() {
   const detailTransitionSourceRef = useRef<string | null>(null);
   const savedHomeScrollY = useRef(0);
   const [, forceRouteAnimationRefresh] = useState(0);
+
+  useEffect(() => {
+    if (!isCompactTransitionViewport) return;
+
+    const captureProjectTransition = (event: MouseEvent) => {
+      if (
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const anchor = target.closest<HTMLAnchorElement>('a[href]');
+      if (!anchor) return;
+
+      const destination = new URL(anchor.href, window.location.href);
+      if (
+        destination.origin !== window.location.origin ||
+        !destination.pathname.startsWith('/project/') ||
+        destination.pathname === window.location.pathname
+      ) {
+        return;
+      }
+
+      createCompactRouteTransitionSnapshot();
+    };
+
+    document.addEventListener('click', captureProjectTransition, true);
+    return () => document.removeEventListener('click', captureProjectTransition, true);
+  }, [isCompactTransitionViewport]);
 
   // Reliably restore home scroll position when navigating back,
   // even if Framer Motion reuses the exiting element and skips onAnimationStart.
@@ -4034,7 +4166,8 @@ function AnimatedRoutes() {
     exitingRouteKind: exitingRouteKindRef.current,
     viewportHeight: typeof window !== 'undefined' ? window.innerHeight : 0,
   };
-  const showProjectOneForwardBackground = !isHome
+  const showProjectOneForwardBackground = !isCompactTransitionViewport
+    && !isHome
     && exitingRouteKindRef.current === 'home'
     && routeAnimationModeRef.current === 'project-one-to-detail';
   const routeContainerOverflow = isHome || routeAnimationModeRef.current === 'project-one-to-detail' || routeAnimationModeRef.current === 'project-one-to-home'
@@ -4222,6 +4355,7 @@ function AnimatedRoutes() {
       )}
       <AnimatePresence initial={false} custom={routeAnimationCustom}>
         <motion.div
+           data-route-page-shell="true"
            key={location.pathname}
            custom={routeAnimationCustom}
            onAnimationStart={() => { 

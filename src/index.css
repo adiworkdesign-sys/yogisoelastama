@@ -1276,6 +1276,10 @@ button, [role="button"] {
   height: clamp(68px, 7vw, 108px);
 }
 
+.project-next-preview-client-logo-frame.is-love-death-robots {
+  transform: translateY(clamp(-48px, -4vw, -24px));
+}
+
 .project-next-preview-client-logo {
   display: block;
   width: 100%;

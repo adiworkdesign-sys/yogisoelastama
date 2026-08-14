@@ -894,9 +894,11 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                       </span>
                     </>
                   )}
-                  <span className="mobile-home-project-title">
-                    {nextProject.title}
-                  </span>
+                  {!projectClientLogo && (
+                    <span className="mobile-home-project-title">
+                      {nextProject.title}
+                    </span>
+                  )}
                 </span>
               </Link>
             );

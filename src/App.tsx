@@ -171,10 +171,20 @@ const startCompactRouteTransitionSnapshot = () => {
       fill: 'forwards',
     },
   );
-  void animation.finished.then(
-    () => snapshot.remove(),
-    () => snapshot.remove(),
-  );
+  void animation.finished.catch(() => undefined);
+  window.setTimeout(() => {
+    if (snapshot.dataset.cleanupScheduled !== 'true') snapshot.remove();
+  }, 3200);
+};
+
+const finishCompactRouteTransitionSnapshot = () => {
+  const snapshot = document.querySelector<HTMLElement>(`.${compactRouteSnapshotClassName}`);
+  if (!snapshot || snapshot.dataset.cleanupScheduled === 'true') return;
+
+  snapshot.dataset.cleanupScheduled = 'true';
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => snapshot.remove());
+  });
 };
 
 
@@ -4432,6 +4442,9 @@ function AnimatedRoutes() {
                   detail: { initialImageIndex: locationState?.initialImageIndex ?? 0 }
                 }));
                 forceRouteAnimationRefresh((value) => value + 1);
+                if (isCompactTransitionViewport) {
+                  finishCompactRouteTransitionSnapshot();
+                }
               }
               if (isHome && routeAnimationModeRef.current === 'project-one-to-home') {
                 if (lenisInstance) {

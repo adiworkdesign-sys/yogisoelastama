@@ -878,18 +878,22 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
                     )}
                   </AnimatePresence>
                 </div>
-                <span className="mobile-home-project-copy" aria-hidden={!isActive}>
+                <span
+                  className={`mobile-home-project-copy ${projectClientLogo ? 'is-client-branded' : 'is-title-only'}`}
+                  aria-hidden={!isActive}
+                >
                   {projectClientLogo && (
-                    <span className="mobile-home-project-client-logo-frame">
-                      <img
-                        src={projectClientLogo.src}
-                        alt=""
-                        className="mobile-home-project-client-logo"
-                        draggable={false}
-                      />
-                    </span>
+                    <>
+                      <span className={`mobile-home-project-client-logo-frame is-${projectClientLogo.brand}`}>
+                        <img
+                          src={projectClientLogo.src}
+                          alt=""
+                          className={`mobile-home-project-client-logo is-${projectClientLogo.brand}`}
+                          draggable={false}
+                        />
+                      </span>
+                    </>
                   )}
-                  <span className="mobile-home-project-divider" aria-hidden="true" />
                   <span className="mobile-home-project-title">
                     {nextProject.title}
                   </span>
@@ -993,11 +997,11 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
           <div className="project-next-preview-scrim" aria-hidden="true" />
           {activeProjectClientLogo && (
             <div className="project-next-preview-copy" aria-hidden={!shouldShowDesktopCoverIdentity}>
-              <span className="project-next-preview-client-logo-frame">
+              <span className={`project-next-preview-client-logo-frame is-${activeProjectClientLogo.brand}`}>
                 <img
                   src={activeProjectClientLogo.src}
                   alt={activeProjectClientLogo.alt}
-                  className="project-next-preview-client-logo"
+                  className={`project-next-preview-client-logo is-${activeProjectClientLogo.brand}`}
                   draggable={false}
                 />
               </span>

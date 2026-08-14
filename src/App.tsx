@@ -1477,6 +1477,8 @@ const HeroSectionStage = ({
   );
 
   const [titleState, setTitleState] = useState<'visible' | 'glitchingOut' | 'hidden' | 'glitchingIn'>('visible');
+  const [sidebarPhase, setSidebarPhase] = useState<'idle' | 'centering' | 'revealing' | 'interactive'>('idle');
+  const [isSidebarVisualOpen, setIsSidebarVisualOpen] = useState(false);
   const [selectedThumbIndex, setSelectedThumbIndex] = useState(0);
   const [displayedImageIndex, setDisplayedImageIndex] = useState(0);
   const [showThumbnailRail, setShowThumbnailRail] = useState(false);
@@ -1541,10 +1543,7 @@ const HeroSectionStage = ({
           setGridMode(1);
           setShowProgressBar(false);
           setTitleState('glitchingOut');
-          window.setTimeout(() => {
-            setTitleState('hidden');
-            isLocked.current = false;
-          }, 550);
+          setSidebarPhase('centering');
           return;
         }
 
@@ -1600,6 +1599,8 @@ const HeroSectionStage = ({
       setDisplayedImageIndex(0);
       setIsMediaSwitching(false);
       setMediaSwitchDirection(1);
+      setSidebarPhase('idle');
+      setIsSidebarVisualOpen(false);
       setTitleState('visible');
       isLocked.current = false;
     }, { threshold: [0, 0.45, 0.95] });
@@ -1672,11 +1673,19 @@ const HeroSectionStage = ({
   const isGrid = titleState === 'hidden' && usesProjectGridMechanism;
   const isProjectOneCompactLayout = usesProjectGridMechanism && isCompactViewport;
   const isProjectOnePhoneLayout = usesProjectGridMechanism && isPhoneViewport;
-  const isSidebarOpen = (titleState === 'hidden' || showProgressBar) && usesProjectGridMechanism && !isProjectOnePhoneLayout;
-  const shouldCenterActiveLayout = !isLast && !isPhoneViewport && isSidebarOpen;
+  const isSidebarOpen = (sidebarPhase === 'revealing' || sidebarPhase === 'interactive' || showProgressBar)
+    && usesProjectGridMechanism
+    && !isProjectOnePhoneLayout;
+  const isSidebarInteractive = sidebarPhase === 'interactive';
+  const isSidebarSequenceActive = sidebarPhase !== 'idle' || showProgressBar;
+  const shouldCenterActiveLayout = !isLast && !isPhoneViewport && isSidebarSequenceActive;
   const shouldKeepMediaActive = isMediaActive || isSidebarOpen;
   const isCinematicIntroVisible = titleState === 'visible' || titleState === 'glitchingIn';
   const projectClientLogo = getProjectClientLogo(project.id);
+  const hasProjectClient = typeof project.client === 'string'
+    && project.client.trim().length > 0
+    && project.client.trim() !== '—';
+  const showDesktopCoverTitle = !hasProjectClient;
   const detailLinkState = usesProjectGridMechanism ? { transitionSource: 'project-one-grid' } : undefined;
   const projectOneObjectFit = 'cover';
   const projectOneLayoutTransition = {
@@ -1685,11 +1694,9 @@ const HeroSectionStage = ({
     damping: 24,
     mass: 0.92,
   };
-  const projectOnePanelTransition = {
-    type: 'spring' as const,
-    stiffness: 128,
-    damping: 22,
-    mass: 0.95,
+  const projectOneSidebarRevealTransition = {
+    duration: 1.04,
+    ease: [0.22, 1, 0.36, 1] as const,
   };
   const projectOneMainMediaTransition = {
     type: 'spring' as const,
@@ -1697,11 +1704,10 @@ const HeroSectionStage = ({
     damping: 24,
     mass: 0.96,
   };
-  const projectOneTextEnterDelay = 0.18;
+  const projectOneTextEnterDelay = 0.2;
   const projectOneGridRevealDelay = 0.05;
-  const projectOneGridSidebarContentDelay = 0.1;
-  const thumbnailRailDelayMs = 560;
-  const projectOneHoverEnableDelayMs = 980;
+  const projectOneGridSidebarContentDelay = 0.22;
+  const thumbnailRailDelayMs = 430;
   const detailGridHeight = isProjectOnePhoneLayout ? '18vh' : (isProjectOneCompactLayout ? '28vh' : '48vh');
   const projectOneSidebarWidth = 'clamp(240px, 28vw, 480px)';
   const projectOneCompactPanelHeight = isProjectOnePhoneLayout ? 'clamp(260px, 38vh, 360px)' : 'clamp(196px, 31vh, 300px)';
@@ -1710,6 +1716,25 @@ const HeroSectionStage = ({
     onActiveLayoutChange(shouldCenterActiveLayout);
     return () => onActiveLayoutChange(false);
   }, [onActiveLayoutChange, shouldCenterActiveLayout]);
+
+  useEffect(() => {
+    if (sidebarPhase === 'centering') {
+      const timeoutId = window.setTimeout(() => {
+        setTitleState('hidden');
+        setIsSidebarVisualOpen(true);
+        setSidebarPhase('revealing');
+      }, 300);
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    if (sidebarPhase === 'revealing') {
+      const timeoutId = window.setTimeout(() => {
+        setSidebarPhase('interactive');
+        isLocked.current = false;
+      }, 1080);
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [sidebarPhase]);
 
   const scrollActiveLayoutToViewportCenter = useCallback(() => {
     if (!shouldCenterActiveLayout) return;
@@ -1722,7 +1747,8 @@ const HeroSectionStage = ({
     const targetScrollY = Math.max(0, window.scrollY + sectionTop);
     if (lenisInstance) {
       lenisInstance.scrollTo(targetScrollY, {
-        duration: 0.48,
+        duration: 0.34,
+        lock: true,
         easing: (progress: number) => 1 - Math.pow(1 - progress, 3),
       });
       return;
@@ -1742,13 +1768,12 @@ const HeroSectionStage = ({
   }, [scrollActiveLayoutToViewportCenter, shouldCenterActiveLayout]);
 
   const projectOneSidebarTitleVariants: Variants = {
-    hidden: { opacity: 0, y: 12, filter: 'blur(8px)', clipPath: 'inset(0 0 24% 0)' },
+    hidden: { opacity: 0, y: 14, clipPath: 'inset(0 0 28% 0)' },
     visible: {
       opacity: 1,
       y: 0,
-      filter: 'blur(0px)',
       clipPath: 'inset(0 0 0% 0)',
-      transition: { duration: 0.92, delay: projectOneTextEnterDelay, ease: [0.22, 1, 0.36, 1] }
+      transition: { duration: 0.62, delay: projectOneTextEnterDelay, ease: [0.16, 1, 0.3, 1] }
     }
   };
   const projectOneSidebarDividerVariants: Variants = {
@@ -1756,23 +1781,21 @@ const HeroSectionStage = ({
     visible: {
       opacity: 1,
       scaleX: 1,
-      transition: { duration: 0.82, delay: projectOneTextEnterDelay + 0.06, ease: [0.22, 1, 0.36, 1] }
+      transition: { duration: 0.52, delay: projectOneTextEnterDelay + 0.05, ease: [0.16, 1, 0.3, 1] }
     }
   };
   const projectOneSidebarMetaItemVariants: Variants = {
     hidden: (index: number) => ({
       opacity: 0,
-      y: index === 3 ? 12 : 8,
-      filter: 'blur(6px)'
+      y: index === 3 ? 12 : 9
     }),
     visible: (index: number) => ({
       opacity: 1,
       y: 0,
-      filter: 'blur(0px)',
       transition: {
-        duration: index === 3 ? 0.8 : 0.72,
-        delay: projectOneTextEnterDelay + 0.12 + index * 0.045,
-        ease: [0.22, 1, 0.36, 1]
+        duration: index === 3 ? 0.58 : 0.5,
+        delay: projectOneTextEnterDelay + 0.1 + index * 0.04,
+        ease: [0.16, 1, 0.3, 1]
       }
     })
   };
@@ -1830,17 +1853,9 @@ const HeroSectionStage = ({
   useEffect(() => {
     if (!usesProjectGridMechanism) return;
 
-    setIsProjectOneHoverReady(false);
     setHoveredMediaPanel(null);
-
-    if (!isGrid) return;
-
-    const timeoutId = window.setTimeout(() => {
-      setIsProjectOneHoverReady(true);
-    }, projectOneHoverEnableDelayMs);
-
-    return () => window.clearTimeout(timeoutId);
-  }, [usesProjectGridMechanism, isGrid, projectOneHoverEnableDelayMs]);
+    setIsProjectOneHoverReady(isGrid && isSidebarInteractive);
+  }, [usesProjectGridMechanism, isGrid, isSidebarInteractive]);
 
   useEffect(() => {
     setHydratedThumbnailIndexes({});
@@ -2491,7 +2506,7 @@ const HeroSectionStage = ({
         animate={{
           y: shouldCenterActiveLayout ? desktopProjectBrowsingOffset : '0px',
         }}
-        transition={{ duration: 0.62, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: sidebarPhase === 'centering' ? 0.34 : 0.46, ease: [0.16, 1, 0.3, 1] }}
         style={{
           width: '100%',
           height: '100%',
@@ -2519,32 +2534,18 @@ const HeroSectionStage = ({
         >
         <div
           className="hero-section"
+          data-sidebar-visual-open={isSidebarVisualOpen ? 'true' : 'false'}
           style={{
             height: '100%',
             display: 'flex',
             flexDirection: isProjectOneCompactLayout ? 'column' : 'row',
             width: '100%',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            position: 'relative',
           }}
         >
           <motion.div
-            initial={false}
-            animate={{
-              flexBasis: isProjectOneCompactLayout
-                ? (isSidebarOpen ? `calc(100% - ${projectOneCompactPanelHeight})` : '100%')
-                : (isSidebarOpen ? `calc(100% - ${projectOneSidebarWidth})` : '100%'),
-              width: isProjectOneCompactLayout
-                ? '100%'
-                : (isSidebarOpen ? `calc(100% - ${projectOneSidebarWidth})` : '100%'),
-              height: isProjectOneCompactLayout
-                ? (isSidebarOpen ? `calc(100% - ${projectOneCompactPanelHeight})` : '100%')
-                : '100%',
-            }}
-            transition={{
-              flexBasis: { ...projectOneLayoutTransition, delay: 0 },
-              width: { ...projectOneLayoutTransition, delay: 0 },
-              height: { ...projectOneLayoutTransition, delay: 0 },
-            }}
+            className="desktop-project-media-column"
             style={{
               height: isProjectOneCompactLayout
                 ? (isSidebarOpen ? `calc(100% - ${projectOneCompactPanelHeight})` : '100%')
@@ -2552,8 +2553,9 @@ const HeroSectionStage = ({
               position: 'relative',
               flexShrink: 0,
               minWidth: 0,
-backfaceVisibility: 'hidden',
+              backfaceVisibility: 'hidden',
               transform: 'translateZ(0)',
+              width: isProjectOneCompactLayout ? '100%' : undefined,
               overflow: 'hidden',
             }}
           >
@@ -2761,7 +2763,7 @@ backfaceVisibility: 'hidden',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
-                      gap: projectClientLogo ? 'clamp(14px, 1.6vw, 22px)' : 0,
+                      gap: projectClientLogo && showDesktopCoverTitle ? 'clamp(14px, 1.6vw, 22px)' : 0,
                       width: '100%',
                     }}
                   >
@@ -2771,6 +2773,7 @@ backfaceVisibility: 'hidden',
                           data-cinematic-client-logo={projectClientLogo.alt}
                           src={projectClientLogo.src}
                           alt={projectClientLogo.alt}
+                          className={`cinematic-project-logo is-${projectClientLogo.brand}`}
                           style={{
                             display: 'block',
                             width: projectClientLogo.desktopWidth ?? 'clamp(350px, 40vw, 700px)',
@@ -2781,36 +2784,40 @@ backfaceVisibility: 'hidden',
                             opacity: 0.88,
                           }}
                         />
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            display: 'block',
-                            width: '52px',
-                            height: '1px',
-                            background: 'rgba(255,255,255,0.48)',
-                          }}
-                        />
+                        {showDesktopCoverTitle && (
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              display: 'block',
+                              width: '52px',
+                              height: '1px',
+                              background: 'rgba(255,255,255,0.48)',
+                            }}
+                          />
+                        )}
                       </>
                     )}
-                    <h2
-                      style={{
-                        maxWidth: '18ch',
-                        margin: 0,
-                        color: '#fff',
-                        fontFamily: '"Inter Display", Inter, sans-serif',
-                        fontSize: 'clamp(29px, 3.1vw, 55px)',
-                        fontWeight: 900,
-                        lineHeight: 1.02,
-                        letterSpacing: 0,
-                        textAlign: 'center',
-                        textTransform: 'uppercase',
-                        textWrap: 'balance',
-                        overflowWrap: 'anywhere',
-                        textShadow: '0 3px 28px rgba(0,0,0,0.9)',
-                      }}
-                    >
-                      {displayTitle}
-                    </h2>
+                    {showDesktopCoverTitle && (
+                      <h2
+                        style={{
+                          maxWidth: '18ch',
+                          margin: 0,
+                          color: '#fff',
+                          fontFamily: '"Inter Display", Inter, sans-serif',
+                          fontSize: 'clamp(29px, 3.1vw, 55px)',
+                          fontWeight: 900,
+                          lineHeight: 1.02,
+                          letterSpacing: 0,
+                          textAlign: 'center',
+                          textTransform: 'uppercase',
+                          textWrap: 'balance',
+                          overflowWrap: 'anywhere',
+                          textShadow: '0 3px 28px rgba(0,0,0,0.9)',
+                        }}
+                      >
+                        {displayTitle}
+                      </h2>
+                    )}
                   </div>
                 </motion.div>
               </>
@@ -2846,60 +2853,57 @@ backfaceVisibility: 'hidden',
           {/* RIGHT SIDEBAR COLUMN */}
           {usesProjectGridMechanism && (
             <motion.div
-              initial={false}
-              animate={{
-                flexBasis: isProjectOneCompactLayout
-                  ? (isSidebarOpen ? projectOneCompactPanelHeight : '0px')
-                  : (isSidebarOpen ? projectOneSidebarWidth : '0px'),
-                width: isProjectOneCompactLayout
-                  ? '100%'
-                  : (isSidebarOpen ? projectOneSidebarWidth : '0px'),
-                height: isProjectOneCompactLayout
-                  ? (isSidebarOpen ? projectOneCompactPanelHeight : '0px')
-                  : '100%',
-                opacity: isSidebarOpen ? 1 : 0,
-                x: isProjectOneCompactLayout ? 0 : (isSidebarOpen ? 0 : 56),
-                y: isProjectOneCompactLayout ? (isSidebarOpen ? 0 : 42) : 0,
-              }}
-              transition={{
-                flexBasis: { ...projectOneLayoutTransition, delay: isSidebarOpen ? projectOneGridRevealDelay : 0 },
-                width: { ...projectOneLayoutTransition, delay: isSidebarOpen ? projectOneGridRevealDelay : 0 },
-                height: { ...projectOneLayoutTransition, delay: isSidebarOpen ? projectOneGridRevealDelay : 0 },
-                opacity: { duration: 0.42, delay: isSidebarOpen ? 0.12 : 0, ease: [0.16, 1, 0.3, 1] },
-                x: { ...projectOnePanelTransition, delay: isSidebarOpen ? projectOneGridRevealDelay : 0 },
-                y: { ...projectOnePanelTransition, delay: isSidebarOpen ? projectOneGridRevealDelay : 0 },
-              }}
+              className="desktop-project-sidebar-column"
+              data-sidebar-phase={sidebarPhase}
               style={{
                   height: isProjectOneCompactLayout
                     ? (isSidebarOpen ? projectOneCompactPanelHeight : '0px')
                     : '100%',
+                  width: isProjectOneCompactLayout ? '100%' : projectOneSidebarWidth,
                   backgroundColor: '#070707',
                   display: 'flex', flexDirection: 'column', justifyContent: isProjectOneCompactLayout ? 'flex-start' : 'center',
-                  overflow: 'hidden', position: 'relative', pointerEvents: isSidebarOpen ? 'auto' : 'none',
-                  borderLeft: !isProjectOneCompactLayout && isSidebarOpen ? '2px solid #000' : 'none',
-                  borderTop: isProjectOneCompactLayout && isSidebarOpen ? '2px solid #000' : 'none',
+                  overflow: 'hidden',
+                  position: isProjectOneCompactLayout ? 'relative' : 'absolute',
+                  top: isProjectOneCompactLayout ? undefined : 0,
+                  right: isProjectOneCompactLayout ? undefined : 0,
+                  bottom: undefined,
+                  pointerEvents: isSidebarInteractive ? 'auto' : 'none',
                   flexShrink: 0, zIndex: 10, minWidth: 0,
                   contain: 'layout paint style',
                   backfaceVisibility: 'hidden',
-                  transform: 'translateZ(0)',
+                  transform: isProjectOneCompactLayout
+                    ? `translate3d(0, ${isSidebarOpen ? '0' : '42px'}, 0)`
+                    : undefined,
+                  transition: isProjectOneCompactLayout
+                    ? `transform ${projectOneSidebarRevealTransition.duration}s cubic-bezier(0.22, 1, 0.36, 1) ${isSidebarOpen ? projectOneGridRevealDelay : 0}s`
+                    : undefined,
                 }}
               >
+                <motion.div
+                  aria-hidden="true"
+                  initial={false}
+                  animate={{ opacity: isSidebarOpen ? 1 : 0 }}
+                  transition={{ duration: 0.24, delay: isSidebarOpen ? 0.12 : 0 }}
+                  style={isProjectOneCompactLayout
+                    ? { position: 'absolute', top: 0, left: 0, right: 0, height: '2px', background: '#000', zIndex: 2 }
+                    : { position: 'absolute', top: 0, bottom: 0, left: 0, width: '2px', background: '#000', zIndex: 2 }}
+                />
                 <motion.div
                   initial={false}
                   animate={{
                     opacity: isSidebarOpen ? 1 : 0,
-                    x: isProjectOneCompactLayout ? 0 : (isSidebarOpen ? 0 : 36),
+                    x: isProjectOneCompactLayout ? 0 : (isSidebarOpen ? 0 : 20),
                     y: isProjectOneCompactLayout ? (isSidebarOpen ? 0 : 18) : 0,
                     filter: hoveredMediaPanel ? 'brightness(0.56) saturate(0.82)' : 'brightness(1) saturate(1)',
                   }}
                   transition={{
-                    opacity: { duration: 0.46, delay: isSidebarOpen ? 0.20 : 0, ease: [0.22, 1, 0.36, 1] },
-                    x: { ...projectOnePanelTransition, delay: isSidebarOpen ? projectOneGridSidebarContentDelay : 0 },
-                    y: { ...projectOnePanelTransition, delay: isSidebarOpen ? projectOneGridSidebarContentDelay : 0 },
+                    opacity: { duration: 0.4, delay: isSidebarOpen ? projectOneGridSidebarContentDelay : 0, ease: [0.16, 1, 0.3, 1] },
+                    x: { duration: 0.56, delay: isSidebarOpen ? projectOneGridSidebarContentDelay : 0, ease: [0.16, 1, 0.3, 1] },
+                    y: { duration: 0.56, delay: isSidebarOpen ? projectOneGridSidebarContentDelay : 0, ease: [0.16, 1, 0.3, 1] },
                     filter: { duration: 0.52, ease: [0.22, 1, 0.36, 1] },
                   }}
                   style={{ 
-                    width: '100%',
+                    width: isProjectOneCompactLayout ? '100%' : projectOneSidebarWidth,
                     maxWidth: '100%',
                     minWidth: 0,
                     height: isProjectOneCompactLayout ? '100%' : undefined,
@@ -3881,20 +3885,23 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
                 ) : null)}
               </div>
               <span
-                className="mobile-home-project-copy"
+                className={`mobile-home-project-copy ${projectClientLogo ? 'is-client-branded' : 'is-title-only'}`}
                 aria-hidden={!isActive}
               >
                 {projectClientLogo && (
-                  <span className="mobile-home-project-client-logo-frame">
-                    <img
-                      src={projectClientLogo.src}
-                      alt=""
-                      className="mobile-home-project-client-logo"
-                      draggable={false}
-                    />
-                  </span>
+                  <>
+                    <span
+                      className={`mobile-home-project-client-logo-frame is-${projectClientLogo.brand}`}
+                    >
+                      <img
+                        src={projectClientLogo.src}
+                        alt=""
+                        className={`mobile-home-project-client-logo is-${projectClientLogo.brand}`}
+                        draggable={false}
+                      />
+                    </span>
+                  </>
                 )}
-                <span className="mobile-home-project-divider" aria-hidden="true" />
                 <span className="mobile-home-project-title">
                   {project.title}
                 </span>

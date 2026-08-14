@@ -884,7 +884,7 @@ button, [role="button"] {
   height: clamp(44px, 12.5vw, 58px);
   display: grid;
   place-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 18px;
 }
 
 .mobile-home-project-client-logo {
@@ -896,31 +896,26 @@ button, [role="button"] {
   opacity: 0.88;
 }
 
-.mobile-home-project-divider {
-  width: 28px;
-  height: 6px;
-  display: grid;
-  place-items: center;
-  flex: 0 0 6px;
-  position: relative;
-  z-index: 3;
+.mobile-home-project-client-logo-frame.is-wizards,
+.mobile-home-project-client-logo-frame.is-love-death-robots {
+  height: clamp(74px, 21vw, 96px);
+  margin-bottom: 22px;
 }
 
-.mobile-home-project-client-logo-frame + .mobile-home-project-divider {
-  margin-top: 0;
+.mobile-home-project-client-logo-frame.is-wizards .mobile-home-project-client-logo,
+.mobile-home-project-client-logo-frame.is-love-death-robots .mobile-home-project-client-logo {
+  max-width: min(58vw, 220px);
+  max-height: 100%;
 }
 
-.mobile-home-project-divider::before {
-  content: "";
-  width: 100%;
-  height: 1px;
-  background: rgba(255,255,255,0.76);
-  box-shadow: 0 1px 5px rgba(0,0,0,0.8);
+.mobile-home-project-client-logo.is-secret-level {
+  max-width: min(60vw, 230px);
 }
 
 .mobile-home-project-title {
   display: block;
-  max-width: 18ch;
+  width: 100%;
+  max-width: none;
   color: #fff;
   font-size: clamp(16px, 5vw, 25px);
   font-weight: 900;
@@ -931,6 +926,14 @@ button, [role="button"] {
   text-wrap: balance;
   overflow-wrap: anywhere;
   text-shadow: 0 2px 18px rgba(0, 0, 0, 0.92);
+}
+
+.mobile-home-project-copy.is-client-branded .mobile-home-project-title {
+  width: 100%;
+  max-width: none;
+  font-size: clamp(11px, 3.1vw, 15px);
+  font-weight: 800;
+  line-height: 1.16;
 }
 
 .mobile-home-project-thumbnail.is-viewport-active .mobile-home-project-copy {
@@ -958,16 +961,30 @@ button, [role="button"] {
   .mobile-home-project-client-logo-frame {
     width: min(42vw, 320px);
     height: clamp(58px, 8vw, 82px);
-    margin-bottom: 12px;
+    margin-bottom: 22px;
   }
 
-  .mobile-home-project-divider {
-    width: 32px;
+  .mobile-home-project-client-logo-frame.is-wizards,
+  .mobile-home-project-client-logo-frame.is-love-death-robots {
+    height: clamp(96px, 13vw, 128px);
+    margin-bottom: 28px;
+  }
+
+  .mobile-home-project-client-logo-frame.is-wizards .mobile-home-project-client-logo,
+  .mobile-home-project-client-logo-frame.is-love-death-robots .mobile-home-project-client-logo {
+    max-width: min(38vw, 300px);
   }
 
   .mobile-home-project-title {
     font-size: clamp(22px, 3vw, 34px);
-    max-width: 20ch;
+    width: 100%;
+    max-width: none;
+  }
+
+  .mobile-home-project-copy.is-client-branded .mobile-home-project-title {
+    width: 100%;
+    max-width: none;
+    font-size: clamp(13px, 1.65vw, 18px);
   }
 
 }
@@ -1266,6 +1283,10 @@ button, [role="button"] {
   object-fit: contain;
   filter: grayscale(1) brightness(0) invert(1);
   opacity: 0.88;
+}
+
+.project-next-preview-client-logo.is-secret-level {
+  max-width: 100%;
 }
 
 .project-next-preview:focus-visible {
@@ -2197,5 +2218,28 @@ button, [role="button"] {
   .credits-item-text {
     font-size: 17px;
     letter-spacing: 0.6px;
+  }
+}
+@media (min-width: 1281px) {
+  .hero-section .desktop-project-media-column {
+    width: 100%;
+    will-change: width;
+    transition: width 1.04s cubic-bezier(0.22, 1, 0.36, 1) 0s;
+  }
+
+  .hero-section .desktop-project-sidebar-column {
+    transform: translate3d(100%, 0, 0);
+    will-change: transform;
+    transition: transform 1.04s cubic-bezier(0.22, 1, 0.36, 1) 0s;
+  }
+
+  .hero-section[data-sidebar-visual-open='true'] .desktop-project-media-column {
+    width: calc(100% - clamp(240px, 28vw, 480px));
+    transition-delay: 0.05s;
+  }
+
+  .hero-section[data-sidebar-visual-open='true'] .desktop-project-sidebar-column {
+    transform: translate3d(0, 0, 0);
+    transition-delay: 0.05s;
   }
 }

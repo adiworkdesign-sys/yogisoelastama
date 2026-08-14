@@ -1,4 +1,16 @@
 {
+  "/assets/01 - Leviathan RCG/01cffd_55c2d3c6921148a1ba09534828ac38d1~mv2.jpg": [
+    5523,
+    2859,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920,
+      2560
+    ]
+  ],
   "/assets/01 - Leviathan RCG/01cffd_515d48cfa04643f0a78fae099d788734~mv2.jpg": [
     5523,
     3126,
@@ -23,9 +35,9 @@
       2560
     ]
   ],
-  "/assets/01 - Leviathan RCG/01cffd_55c2d3c6921148a1ba09534828ac38d1~mv2.jpg": [
-    5523,
-    2859,
+  "/assets/01 - Leviathan RCG/01cffd_a5f7f3d952ed4acab874fa543635677c~mv2.jpg": [
+    4030,
+    2034,
     [
       320,
       640,
@@ -48,18 +60,6 @@
     ]
   ],
   "/assets/01 - Leviathan RCG/01cffd_9782f6a882b3427f9df050b70f60df77~mv2.jpg": [
-    4030,
-    2034,
-    [
-      320,
-      640,
-      960,
-      1440,
-      1920,
-      2560
-    ]
-  ],
-  "/assets/01 - Leviathan RCG/01cffd_a5f7f3d952ed4acab874fa543635677c~mv2.jpg": [
     4030,
     2034,
     [
@@ -104,14 +104,14 @@
       2560
     ]
   ],
-  "/assets/01 - Leviathan RCG/thumbs/01cffd_55c2d3c6921148a1ba09534828ac38d1~mv2.jpg": [
+  "/assets/01 - Leviathan RCG/thumbs/01cffd_515d48cfa04643f0a78fae099d788734~mv2.jpg": [
     96,
     64,
     [
       96
     ]
   ],
-  "/assets/01 - Leviathan RCG/thumbs/01cffd_515d48cfa04643f0a78fae099d788734~mv2.jpg": [
+  "/assets/01 - Leviathan RCG/thumbs/01cffd_55c2d3c6921148a1ba09534828ac38d1~mv2.jpg": [
     96,
     64,
     [
@@ -130,7 +130,7 @@
       2560
     ]
   ],
-  "/assets/01 - Leviathan RCG/thumbs/01cffd_599866f94142498a8b9b5e737188c278~mv2.jpg": [
+  "/assets/01 - Leviathan RCG/thumbs/01cffd_9782f6a882b3427f9df050b70f60df77~mv2.jpg": [
     96,
     64,
     [
@@ -144,14 +144,14 @@
       96
     ]
   ],
-  "/assets/01 - Leviathan RCG/thumbs/01cffd_9782f6a882b3427f9df050b70f60df77~mv2.jpg": [
+  "/assets/01 - Leviathan RCG/thumbs/01cffd_599866f94142498a8b9b5e737188c278~mv2.jpg": [
     96,
     64,
     [
       96
     ]
   ],
-  "/assets/01 - Leviathan RCG/thumbs/01cffd_b82a1011590f46639091218d32e283d0f003.jpg": [
+  "/assets/01 - Leviathan RCG/thumbs/01cffd_ae74d5ba76d1436f82da33607b864fc2~mv2.jpg": [
     96,
     64,
     [
@@ -165,7 +165,7 @@
       96
     ]
   ],
-  "/assets/01 - Leviathan RCG/thumbs/01cffd_ae74d5ba76d1436f82da33607b864fc2~mv2.jpg": [
+  "/assets/01 - Leviathan RCG/thumbs/01cffd_b82a1011590f46639091218d32e283d0f003.jpg": [
     96,
     64,
     [
@@ -244,18 +244,6 @@
       2560
     ]
   ],
-  "/assets/02 - LDR Scream of Tyrannosaurus/01cffd_ec703629e82b45fe91cb5a2c0feb28b4~mv2.jpg": [
-    7285,
-    2480,
-    [
-      320,
-      640,
-      960,
-      1440,
-      1920,
-      2560
-    ]
-  ],
   "/assets/02 - LDR Scream of Tyrannosaurus/TYRA_Grapple_Concept_YS_231006_01.jpg": [
     4936,
     2304,
@@ -268,9 +256,9 @@
       2560
     ]
   ],
-  "/assets/03 - Secret Level Concord/01cffd_322e5c2556494abc877ffbecce2fbc11~mv2.jpg": [
-    4500,
-    2468,
+  "/assets/02 - LDR Scream of Tyrannosaurus/01cffd_ec703629e82b45fe91cb5a2c0feb28b4~mv2.jpg": [
+    7285,
+    2480,
     [
       320,
       640,
@@ -292,7 +280,7 @@
       2560
     ]
   ],
-  "/assets/03 - Secret Level Concord/01cffd_595050d7a9d943b5b05a56fb69acebc2~mv2.jpg": [
+  "/assets/03 - Secret Level Concord/01cffd_322e5c2556494abc877ffbecce2fbc11~mv2.jpg": [
     4500,
     2468,
     [
@@ -304,9 +292,9 @@
       2560
     ]
   ],
-  "/assets/03 - Secret Level Concord/01cffd_7ad333400a914bfa8a6161e4467e3393~mv2.jpg": [
+  "/assets/03 - Secret Level Concord/01cffd_595050d7a9d943b5b05a56fb69acebc2~mv2.jpg": [
     4500,
-    2748,
+    2468,
     [
       320,
       640,
@@ -328,9 +316,33 @@
       2560
     ]
   ],
+  "/assets/03 - Secret Level Concord/01cffd_7ad333400a914bfa8a6161e4467e3393~mv2.jpg": [
+    4500,
+    2748,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920,
+      2560
+    ]
+  ],
   "/assets/03 - Secret Level Concord/01cffd_c4d4cb4ce516492c9c01ff38e6d4f909~mv2.jpg": [
     4500,
     3058,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920,
+      2560
+    ]
+  ],
+  "/assets/03 - Secret Level Concord/Axis_Mute_GuildGun_StrayStudios_01.jpg": [
+    4500,
+    2354,
     [
       320,
       640,
@@ -364,9 +376,9 @@
       2560
     ]
   ],
-  "/assets/03 - Secret Level Concord/Axis_Mute_GuildGun_StrayStudios_01.jpg": [
-    4500,
-    2354,
+  "/assets/04 - Leviathan Caterpillar/01cffd_56a6dda0204a4e4d87dce0f85c5abd34~mv2.jpg": [
+    4096,
+    2048,
     [
       320,
       640,
@@ -388,9 +400,9 @@
       2560
     ]
   ],
-  "/assets/04 - Leviathan Caterpillar/01cffd_56a6dda0204a4e4d87dce0f85c5abd34~mv2.jpg": [
-    4096,
-    2048,
+  "/assets/04 - Leviathan Caterpillar/01cffd_aae3549d3203485d81cc943a669ae31e~mv2.jpg": [
+    6393,
+    1920,
     [
       320,
       640,
@@ -400,9 +412,9 @@
       2560
     ]
   ],
-  "/assets/04 - Leviathan Caterpillar/01cffd_aae3549d3203485d81cc943a669ae31e~mv2.jpg": [
-    6393,
-    1920,
+  "/assets/05 - Leviathan Icebreaker/01cffd_66df69aa3ecd4fd3956ecfe4aa3d1bb1f000.jpg": [
+    2572,
+    1080,
     [
       320,
       640,
@@ -427,18 +439,6 @@
   "/assets/04 - Leviathan Caterpillar/01cffd_e0b152a291c34c91bba81e4c4a9706e4~mv2.jpg": [
     9381,
     3455,
-    [
-      320,
-      640,
-      960,
-      1440,
-      1920,
-      2560
-    ]
-  ],
-  "/assets/05 - Leviathan Icebreaker/01cffd_66df69aa3ecd4fd3956ecfe4aa3d1bb1f000.jpg": [
-    2572,
-    1080,
     [
       320,
       640,
@@ -483,18 +483,6 @@
       2560
     ]
   ],
-  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_06.jpg": [
-    4096,
-    1714,
-    [
-      320,
-      640,
-      960,
-      1440,
-      1920,
-      2560
-    ]
-  ],
   "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_07.jpg": [
     4096,
     1743,
@@ -507,9 +495,9 @@
       2560
     ]
   ],
-  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_05.jpg": [
+  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_06.jpg": [
     4096,
-    1877,
+    1714,
     [
       320,
       640,
@@ -519,9 +507,9 @@
       2560
     ]
   ],
-  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_12.jpg": [
+  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_05.jpg": [
     4096,
-    949,
+    1877,
     [
       320,
       640,
@@ -555,7 +543,7 @@
       2560
     ]
   ],
-  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_13.jpg": [
+  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_12.jpg": [
     4096,
     949,
     [
@@ -591,6 +579,30 @@
       2560
     ]
   ],
+  "/assets/05 - Leviathan Icebreaker/Icebreaker_YogiSoelastama_13.jpg": [
+    4096,
+    949,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920,
+      2560
+    ]
+  ],
+  "/assets/06 - Fallen Angel/01cffd_8c59b6a1259746a5b8d884f5fd279542~mv2.jpg": [
+    3478,
+    2004,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920,
+      2560
+    ]
+  ],
   "/assets/06 - Fallen Angel/01cffd_87f96d81e72f4b86a5e15c3da7ec97f0~mv2.jpg": [
     5301,
     1949,
@@ -615,21 +627,9 @@
       2560
     ]
   ],
-  "/assets/06 - Fallen Angel/01cffd_8c59b6a1259746a5b8d884f5fd279542~mv2.jpg": [
-    3478,
-    2004,
-    [
-      320,
-      640,
-      960,
-      1440,
-      1920,
-      2560
-    ]
-  ],
-  "/assets/06 - Fallen Angel/01cffd_9c17918337fe4807a4063c034a7d89e3~mv2.jpg": [
-    4096,
-    1769,
+  "/assets/06 - Fallen Angel/01cffd_bcbf376183584f3f84e80e9b1076b1cb~mv2.jpg": [
+    8070,
+    2427,
     [
       320,
       640,
@@ -651,9 +651,9 @@
       2560
     ]
   ],
-  "/assets/06 - Fallen Angel/01cffd_bcbf376183584f3f84e80e9b1076b1cb~mv2.jpg": [
-    8070,
-    2427,
+  "/assets/06 - Fallen Angel/01cffd_9c17918337fe4807a4063c034a7d89e3~mv2.jpg": [
+    4096,
+    1769,
     [
       320,
       640,
@@ -663,9 +663,9 @@
       2560
     ]
   ],
-  "/assets/06 - Fallen Angel/01cffd_e89a81cfa955427f9386f899a33d675a~mv2.jpg": [
-    9222,
-    2584,
+  "/assets/06 - Fallen Angel/01cffd_ecb445d0e1a34a379be0c3c8ba428c75~mv2.jpg": [
+    7109,
+    3561,
     [
       320,
       640,
@@ -687,9 +687,9 @@
       2560
     ]
   ],
-  "/assets/06 - Fallen Angel/01cffd_ecb445d0e1a34a379be0c3c8ba428c75~mv2.jpg": [
-    7109,
-    3561,
+  "/assets/06 - Fallen Angel/01cffd_e89a81cfa955427f9386f899a33d675a~mv2.jpg": [
+    9222,
+    2584,
     [
       320,
       640,
@@ -735,8 +735,8 @@
       2560
     ]
   ],
-  "/assets/07 - Long Exile/2.jpg": [
-    3000,
+  "/assets/07 - Long Exile/tank03_yogisoelastama.jpg": [
+    4570,
     1200,
     [
       320,
@@ -747,8 +747,8 @@
       2560
     ]
   ],
-  "/assets/07 - Long Exile/tank03_yogisoelastama.jpg": [
-    4570,
+  "/assets/07 - Long Exile/2.jpg": [
+    3000,
     1200,
     [
       320,
@@ -841,9 +841,9 @@
       2560
     ]
   ],
-  "/assets/09 - MTG March of the Machines/01cffd_38c7b5aa78d641f992e15dd505dad17c~mv2.jpg": [
-    4096,
-    1536,
+  "/assets/08 - MTG Dawn of Phyrexian Invasion/AxisStudios_JUDO_YogiSoelastama_Wagon.jpg": [
+    5565,
+    2279,
     [
       320,
       640,
@@ -853,9 +853,9 @@
       2560
     ]
   ],
-  "/assets/08 - MTG Dawn of Phyrexian Invasion/AxisStudios_JUDO_YogiSoelastama_Wagon.jpg": [
-    5565,
-    2279,
+  "/assets/09 - MTG March of the Machines/01cffd_38c7b5aa78d641f992e15dd505dad17c~mv2.jpg": [
+    4096,
+    1536,
     [
       320,
       640,
@@ -877,9 +877,9 @@
       2560
     ]
   ],
-  "/assets/09 - MTG March of the Machines/Marathon_Treebranch_Concept_YogiSoelastama_03.jpg": [
-    4096,
-    2625,
+  "/assets/10 - Godkiller/01cffd_0f7d0fc7ceb24d9898bdc9cbe3b43564~mv2.jpg": [
+    5000,
+    1465,
     [
       320,
       640,
@@ -901,9 +901,9 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_0f7d0fc7ceb24d9898bdc9cbe3b43564~mv2.jpg": [
-    5000,
-    1465,
+  "/assets/09 - MTG March of the Machines/Marathon_Treebranch_Concept_YogiSoelastama_03.jpg": [
+    4096,
+    2625,
     [
       320,
       640,
@@ -949,9 +949,9 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_60b2cea4d1b64626829098ad16f2e868~mv2.jpg": [
-    6547,
-    2387,
+  "/assets/10 - Godkiller/01cffd_796f0f54f1a34d9bb31748dc676093a6~mv2.jpg": [
+    5851,
+    2593,
     [
       320,
       640,
@@ -961,9 +961,9 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_796f0f54f1a34d9bb31748dc676093a6~mv2.jpg": [
-    5851,
-    2593,
+  "/assets/10 - Godkiller/01cffd_60b2cea4d1b64626829098ad16f2e868~mv2.jpg": [
+    6547,
+    2387,
     [
       320,
       640,
@@ -1021,18 +1021,6 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_a3456019c7ff4ce2842a1a8b5ea2e45f~mv2.jpg": [
-    6000,
-    1927,
-    [
-      320,
-      640,
-      960,
-      1440,
-      1920,
-      2560
-    ]
-  ],
   "/assets/10 - Godkiller/01cffd_c904e237c9b44955bc77b75e02d75b2a~mv2.jpg": [
     5393,
     1714,
@@ -1057,9 +1045,9 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_c9279e5a6d5b4ad4a474522b885216d6~mv2.jpg": [
-    3840,
-    3384,
+  "/assets/10 - Godkiller/01cffd_a3456019c7ff4ce2842a1a8b5ea2e45f~mv2.jpg": [
+    6000,
+    1927,
     [
       320,
       640,
@@ -1069,9 +1057,9 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_e226736b5db54fe3852fafad649dce21~mv2.jpg": [
-    8603,
-    2583,
+  "/assets/10 - Godkiller/01cffd_c9279e5a6d5b4ad4a474522b885216d6~mv2.jpg": [
+    3840,
+    3384,
     [
       320,
       640,
@@ -1093,9 +1081,9 @@
       2560
     ]
   ],
-  "/assets/10 - Godkiller/01cffd_fd21a443310840218ad35c601b729ef2~mv2.jpg": [
-    4935,
-    1955,
+  "/assets/10 - Godkiller/01cffd_e226736b5db54fe3852fafad649dce21~mv2.jpg": [
+    8603,
+    2583,
     [
       320,
       640,
@@ -1108,6 +1096,18 @@
   "/assets/10 - Godkiller/01cffd_e9e8d39d9e9c4774a1a3f6c864b049a6~mv2.jpg": [
     5949,
     2524,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920,
+      2560
+    ]
+  ],
+  "/assets/10 - Godkiller/01cffd_fd21a443310840218ad35c601b729ef2~mv2.jpg": [
+    4935,
+    1955,
     [
       320,
       640,
@@ -1136,6 +1136,13 @@
       320
     ]
   ],
+  "/assets/10 - Godkiller/thumbs/01cffd_2c429b50d15b460e8b5e75b012025f8d~mv2.jpg": [
+    320,
+    83,
+    [
+      320
+    ]
+  ],
   "/assets/10 - Godkiller/thumbs/01cffd_15d2d894635f439f95facc613aac3630~mv2.jpg": [
     320,
     83,
@@ -1143,9 +1150,9 @@
       320
     ]
   ],
-  "/assets/10 - Godkiller/thumbs/01cffd_2c429b50d15b460e8b5e75b012025f8d~mv2.jpg": [
+  "/assets/10 - Godkiller/thumbs/01cffd_60b2cea4d1b64626829098ad16f2e868~mv2.jpg": [
     320,
-    83,
+    117,
     [
       320
     ]
@@ -1164,13 +1171,6 @@
       320
     ]
   ],
-  "/assets/10 - Godkiller/thumbs/01cffd_60b2cea4d1b64626829098ad16f2e868~mv2.jpg": [
-    320,
-    117,
-    [
-      320
-    ]
-  ],
   "/assets/10 - Godkiller/thumbs/01cffd_796f0f54f1a34d9bb31748dc676093a6~mv2.jpg": [
     320,
     142,
@@ -1178,16 +1178,16 @@
       320
     ]
   ],
-  "/assets/10 - Godkiller/thumbs/01cffd_7a191da65f934797a061c9adcc1ecdbd~mv2.jpg": [
+  "/assets/10 - Godkiller/thumbs/01cffd_8d02e6304c1b4bc797c2d8abb2769fa8~mv2.jpg": [
     320,
-    139,
+    117,
     [
       320
     ]
   ],
-  "/assets/10 - Godkiller/thumbs/01cffd_8d02e6304c1b4bc797c2d8abb2769fa8~mv2.jpg": [
+  "/assets/10 - Godkiller/thumbs/01cffd_7a191da65f934797a061c9adcc1ecdbd~mv2.jpg": [
     320,
-    117,
+    139,
     [
       320
     ]
@@ -1213,9 +1213,9 @@
       320
     ]
   ],
-  "/assets/10 - Godkiller/thumbs/01cffd_c9279e5a6d5b4ad4a474522b885216d6~mv2.jpg": [
+  "/assets/10 - Godkiller/thumbs/01cffd_d5fe0d54f1734ad9b1398f73326e8904~mv2.jpg": [
     320,
-    282,
+    115,
     [
       320
     ]
@@ -1227,23 +1227,9 @@
       320
     ]
   ],
-  "/assets/10 - Godkiller/thumbs/01cffd_d5fe0d54f1734ad9b1398f73326e8904~mv2.jpg": [
+  "/assets/10 - Godkiller/thumbs/01cffd_c9279e5a6d5b4ad4a474522b885216d6~mv2.jpg": [
     320,
-    115,
-    [
-      320
-    ]
-  ],
-  "/assets/10 - Godkiller/thumbs/01cffd_e9e8d39d9e9c4774a1a3f6c864b049a6~mv2.jpg": [
-    320,
-    136,
-    [
-      320
-    ]
-  ],
-  "/assets/10 - Godkiller/thumbs/01cffd_e226736b5db54fe3852fafad649dce21~mv2.jpg": [
-    320,
-    97,
+    282,
     [
       320
     ]
@@ -1255,11 +1241,36 @@
       320
     ]
   ],
-  "/assets/profile-dummy.jpg": [
-    160,
-    160,
+  "/assets/10 - Godkiller/thumbs/01cffd_e226736b5db54fe3852fafad649dce21~mv2.jpg": [
+    320,
+    97,
     [
-      160
+      320
+    ]
+  ],
+  "/assets/10 - Godkiller/thumbs/01cffd_e9e8d39d9e9c4774a1a3f6c864b049a6~mv2.jpg": [
+    320,
+    136,
+    [
+      320
+    ]
+  ],
+  "/assets/logos/projects/love-death-robots-official.png": [
+    512,
+    288,
+    [
+      320,
+      512
+    ]
+  ],
+  "/assets/logos/projects/secret-level-logo-transparent.png": [
+    1157,
+    77,
+    [
+      320,
+      640,
+      960,
+      1157
     ]
   ],
   "/assets/10 - Godkiller/thumbs/01cffd_fd21a443310840218ad35c601b729ef2~mv2.jpg": [
@@ -1269,9 +1280,37 @@
       320
     ]
   ],
-  "/assets/video-thumbnails/icebreaker-detail.jpg": [
+  "/assets/profile-dummy.jpg": [
+    160,
+    160,
+    [
+      160
+    ]
+  ],
+  "/assets/logos/projects/secret-level-stacked-official.png": [
+    1296,
+    653,
+    [
+      320,
+      640,
+      960,
+      1296
+    ]
+  ],
+  "/assets/logos/projects/secret-level-official.png": [
+    1920,
+    1080,
+    [
+      320,
+      640,
+      960,
+      1440,
+      1920
+    ]
+  ],
+  "/assets/video-thumbnails/icebreaker-main.jpg": [
     1280,
-    720,
+    538,
     [
       320,
       640,
@@ -1279,9 +1318,9 @@
       1280
     ]
   ],
-  "/assets/video-thumbnails/mtg-detail.jpg": [
+  "/assets/video-thumbnails/icebreaker-detail.jpg": [
     1280,
-    536,
+    720,
     [
       320,
       640,
@@ -1299,9 +1338,9 @@
       1280
     ]
   ],
-  "/assets/video-thumbnails/icebreaker-main.jpg": [
+  "/assets/video-thumbnails/mtg-main.jpg": [
     1280,
-    538,
+    536,
     [
       320,
       640,
@@ -1309,7 +1348,7 @@
       1280
     ]
   ],
-  "/assets/video-thumbnails/mtg-main.jpg": [
+  "/assets/video-thumbnails/mtg-detail.jpg": [
     1280,
     536,
     [

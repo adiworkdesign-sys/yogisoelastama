@@ -5,6 +5,7 @@ import { ArrowLeft, ArrowRight, ExternalLink, Mail, X } from 'lucide-react';
 import projectsData from './projects.json';
 import Lenis from 'lenis';
 import {
+  getImagePlaceholder,
   getResponsiveImageCandidate,
   getResponsiveImageProps,
   getResponsiveVideoSource,
@@ -66,6 +67,9 @@ type RouteAnimationMode = 'default' | 'project-one-to-detail' | 'project-one-to-
 
 const compactRouteSnapshotClassName = 'compact-route-transition-snapshot';
 const compactRouteSnapshotOverscanPx = 96;
+const compactRouteTransitionDurationMs = 1800;
+const compactRouteTransitionEase = 'cubic-bezier(0.16, 1, 0.3, 1)';
+let compactRouteCapturedViewportHeight = 0;
 
 const createCompactRouteTransitionSnapshot = () => {
   if (typeof window === 'undefined' || window.innerWidth > 1280) return;
@@ -75,6 +79,7 @@ const createCompactRouteTransitionSnapshot = () => {
   if (!source) return;
   const capturedScrollY = window.scrollY;
   const viewportHeight = Math.ceil(window.visualViewport?.height || window.innerHeight);
+  compactRouteCapturedViewportHeight = viewportHeight;
 
   lenisInstance?.stop();
   document.documentElement.style.overflowX = 'hidden';
@@ -85,6 +90,7 @@ const createCompactRouteTransitionSnapshot = () => {
   snapshot.className = compactRouteSnapshotClassName;
   snapshot.setAttribute('aria-hidden', 'true');
   snapshot.dataset.viewportHeight = viewportHeight.toString();
+  snapshot.dataset.travelDistance = (viewportHeight + compactRouteSnapshotOverscanPx).toString();
   snapshot.style.cssText = [
     'position:fixed',
     `top:${-compactRouteSnapshotOverscanPx}px`,
@@ -136,6 +142,7 @@ const createCompactRouteTransitionSnapshot = () => {
   const sourceVideos = Array.from(source.querySelectorAll<HTMLVideoElement>('video'));
   clonedPage.querySelectorAll<HTMLVideoElement>('video').forEach((video, index) => {
     const sourceVideo = sourceVideos[index];
+    const sourceFallbackImage = sourceVideo?.parentElement?.querySelector<HTMLImageElement>('img');
     const replacement = document.createElement('img');
     replacement.className = video.className;
     replacement.style.cssText = video.style.cssText;
@@ -143,7 +150,14 @@ const createCompactRouteTransitionSnapshot = () => {
     replacement.decoding = 'sync';
     replacement.draggable = false;
     replacement.src = sourceVideo && isInViewport(sourceVideo)
-      ? (sourceVideo.poster || video.poster || sourceVideo.currentSrc || video.currentSrc)
+      ? (
+          sourceFallbackImage?.currentSrc
+          || sourceFallbackImage?.src
+          || sourceVideo.poster
+          || video.poster
+          || sourceVideo.currentSrc
+          || video.currentSrc
+        )
       : transparentPixel;
     video.replaceWith(replacement);
   });
@@ -159,15 +173,17 @@ const startCompactRouteTransitionSnapshot = () => {
 
   snapshot.dataset.transitionStarted = 'true';
   const viewportHeight = Number(snapshot.dataset.viewportHeight) || window.innerHeight;
+  const travelDistance = Number(snapshot.dataset.travelDistance)
+    || viewportHeight + compactRouteSnapshotOverscanPx;
 
   const animation = snapshot.animate(
     [
       { transform: 'translate3d(0, 0, 0)' },
-      { transform: `translate3d(0, -${viewportHeight}px, 0)` },
+      { transform: `translate3d(0, -${travelDistance}px, 0)` },
     ],
     {
-      duration: 1800,
-      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+      duration: compactRouteTransitionDurationMs,
+      easing: compactRouteTransitionEase,
       fill: 'forwards',
     },
   );
@@ -326,7 +342,6 @@ const ResilientAutoplayVideo = ({
         loop
         playsInline
         preload={shouldLoadVideo ? 'metadata' : 'none'}
-        poster={poster}
         src={shouldLoadVideo
           ? withVideoPosterStartTime(getResponsiveVideoSource(src), startTime)
           : undefined}
@@ -1792,6 +1807,11 @@ const HeroSectionStage = ({
   const totalProjectImages = projectImages.length;
 
   const displayTitle = project.title;
+  const sidebarTitleDensity = displayTitle.length > 48
+    ? 'long'
+    : displayTitle.length > 30
+      ? 'medium'
+      : 'short';
 
   const isGrid = titleState === 'hidden' && usesProjectGridMechanism;
   const isProjectOneCompactLayout = usesProjectGridMechanism && isCompactViewport;
@@ -1832,7 +1852,7 @@ const HeroSectionStage = ({
   const projectOneGridSidebarContentDelay = 0.22;
   const thumbnailRailDelayMs = 430;
   const detailGridHeight = isProjectOnePhoneLayout ? '18vh' : (isProjectOneCompactLayout ? '28vh' : '48vh');
-  const projectOneSidebarWidth = 'clamp(240px, 28vw, 480px)';
+  const projectOneSidebarWidth = 'var(--project-sidebar-width, clamp(240px, 28vw, 480px))';
   const projectOneCompactPanelHeight = isProjectOnePhoneLayout ? 'clamp(260px, 38vh, 360px)' : 'clamp(196px, 31vh, 300px)';
 
   useEffect(() => {
@@ -1937,15 +1957,29 @@ const HeroSectionStage = ({
     setHydratedThumbnailIndexes((previous) => {
       const next = { ...previous };
       let changed = false;
-      const hydrationRadius = totalProjectImages >= 16 ? 0 : 1;
+      const visibleThumbnailCount = Math.min(5, totalProjectImages);
+      const maxStartIndex = Math.max(0, totalProjectImages - visibleThumbnailCount);
+      const startIndex = Math.min(
+        Math.max(0, centerIndex - Math.floor(visibleThumbnailCount / 2)),
+        maxStartIndex,
+      );
+      const endIndex = startIndex + visibleThumbnailCount - 1;
 
-      for (let index = centerIndex - hydrationRadius; index <= centerIndex + hydrationRadius; index += 1) {
-        if (index < 0 || index >= totalProjectImages || next[index]) continue;
+      for (let index = startIndex; index <= endIndex; index += 1) {
+        if (next[index]) continue;
         next[index] = true;
         changed = true;
       }
 
       return changed ? next : previous;
+    });
+  }, [totalProjectImages]);
+  const hydrateAllThumbnails = useCallback(() => {
+    setHydratedThumbnailIndexes((previous) => {
+      if (Object.keys(previous).length >= totalProjectImages) return previous;
+      return Object.fromEntries(
+        Array.from({ length: totalProjectImages }, (_, index) => [index, true]),
+      );
     });
   }, [totalProjectImages]);
 
@@ -1965,13 +1999,13 @@ const HeroSectionStage = ({
   useEffect(() => {
     if (!isSidebarOpen) {
       setShowThumbnailRail(false);
-      setHydratedThumbnailIndexes({});
       return;
     }
 
+    hydrateThumbnailWindow(selectedThumbIndex);
     const timeoutId = window.setTimeout(() => setShowThumbnailRail(true), thumbnailRailDelayMs);
     return () => window.clearTimeout(timeoutId);
-  }, [isSidebarOpen, thumbnailRailDelayMs]);
+  }, [hydrateThumbnailWindow, isSidebarOpen, selectedThumbIndex, thumbnailRailDelayMs]);
 
   useEffect(() => {
     if (!usesProjectGridMechanism) return;
@@ -1984,6 +2018,16 @@ const HeroSectionStage = ({
     setHydratedThumbnailIndexes({});
     setLoadedThumbnailIndexes({});
   }, [project.id]);
+
+  useEffect(() => {
+    if (!usesProjectGridMechanism) return;
+    hydrateThumbnailWindow(selectedThumbIndex);
+  }, [hydrateThumbnailWindow, project.id, selectedThumbIndex, usesProjectGridMechanism]);
+
+  useEffect(() => {
+    if (!usesProjectGridMechanism || sidebarPhase === 'idle') return;
+    hydrateAllThumbnails();
+  }, [hydrateAllThumbnails, sidebarPhase, usesProjectGridMechanism]);
 
   useEffect(() => {
     setSelectedThumbIndex(0);
@@ -2071,7 +2115,7 @@ const HeroSectionStage = ({
     thumbnailHydrationTimeoutRef.current = window.setTimeout(() => {
       hydrateThumbnailWindow(getCenteredThumbnailIndex());
       thumbnailHydrationTimeoutRef.current = null;
-    }, 140);
+    }, 80);
   };
 
   const updateThumbnailSliderState = () => {
@@ -2138,6 +2182,19 @@ const HeroSectionStage = ({
     const rail = thumbnailRailRef.current;
     if (!rail) return;
     const distance = Math.max(rail.clientWidth * 0.72, 180);
+    const activeButton = thumbnailButtonRefs.current[getCenteredThumbnailIndex()];
+    const itemStride = activeButton
+      ? activeButton.offsetWidth + (isProjectOneCompactLayout ? 8 : 10)
+      : (isProjectOneCompactLayout ? 64 : 80);
+    const indexDelta = Math.max(1, Math.round(distance / itemStride));
+    const targetCenterIndex = Math.min(
+      totalProjectImages - 1,
+      Math.max(
+        0,
+        getCenteredThumbnailIndex() + (direction === 'next' ? indexDelta : -indexDelta),
+      ),
+    );
+    hydrateThumbnailWindow(targetCenterIndex);
     rail.scrollBy({ left: direction === 'next' ? distance : -distance, behavior: 'smooth' });
     window.setTimeout(() => updateThumbnailSliderState(), 260);
   };
@@ -3030,7 +3087,9 @@ const HeroSectionStage = ({
                     maxWidth: '100%',
                     minWidth: 0,
                     height: isProjectOneCompactLayout ? '100%' : undefined,
-                    padding: isProjectOneCompactLayout ? '16px clamp(16px, 4vw, 32px)' : '0 clamp(28px, 3vw, 52px)',
+                    padding: isProjectOneCompactLayout
+                      ? '16px clamp(16px, 4vw, 32px)'
+                      : '0 var(--project-sidebar-padding-inline, clamp(28px, 3vw, 52px))',
                     boxSizing: 'border-box',
                     overflowY: isProjectOneCompactLayout ? 'auto' : undefined,
                     scrollbarWidth: isProjectOneCompactLayout ? 'none' : undefined,
@@ -3143,6 +3202,8 @@ const HeroSectionStage = ({
                           }}
                         >
                           <motion.h2
+                            className="desktop-project-sidebar-title"
+                            data-title-density={sidebarTitleDensity}
                             variants={{
                               rest: { x: 0, opacity: 1, filter: 'blur(0px)' },
                               hover: { x: 0, opacity: 0.92, filter: 'blur(0px)' },
@@ -3150,12 +3211,9 @@ const HeroSectionStage = ({
                             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
                             style={{
                               margin: 0,
-                              fontSize: isProjectOneCompactLayout ? 'clamp(18px, 4.2vw, 24px)' : 'clamp(24px, 2vw, 30px)',
                               fontWeight: 800,
-                              lineHeight: 1.1,
                               textTransform: 'uppercase',
                               color: '#fff',
-                              letterSpacing: '0.02em',
                             }}
                           >
                             {displayTitle}
@@ -3319,6 +3377,7 @@ const HeroSectionStage = ({
                       >
                         {thumbnailSources.map((thumbSrc: string, thumbIndex: number) => {
                           const isSelected = selectedThumbIndex === thumbIndex;
+                          const thumbnailPlaceholder = getImagePlaceholder(thumbSrc);
                           return (
                             <motion.button
                               key={thumbSrc}
@@ -3374,18 +3433,22 @@ const HeroSectionStage = ({
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   background: 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 100%)',
+                                  backgroundColor: '#000',
+                                  backgroundImage: thumbnailPlaceholder ? `url("${thumbnailPlaceholder}")` : undefined,
+                                  backgroundPosition: 'center',
+                                  backgroundRepeat: 'no-repeat',
+                                  backgroundSize: usesProjectGridMechanism ? 'cover' : 'contain',
                                   color: isSelected ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.28)',
                                   fontFamily: 'monospace',
                                   fontSize: '10px',
                                   letterSpacing: '1.5px',
                                 }}
                               >
-                                {String(thumbIndex + 1).padStart(2, '0')}
+                                {!thumbnailPlaceholder && String(thumbIndex + 1).padStart(2, '0')}
                               </span>
                               {hydratedThumbnailIndexes[thumbIndex] && (
                                 <motion.img
-                                  src={thumbSrc}
-                                  {...getResponsiveImageProps(thumbSrc, '80px')}
+                                  src={getResponsiveImageCandidate(thumbSrc, 160)}
                                   alt=""
                                   onLoad={() => {
                                     setLoadedThumbnailIndexes((prev) => (
@@ -3403,10 +3466,15 @@ const HeroSectionStage = ({
                                     objectFit: usesProjectGridMechanism ? 'cover' : 'contain',
                                     display: 'block',
                                     backgroundColor: '#000',
+                                    backgroundImage: thumbnailPlaceholder ? `url("${thumbnailPlaceholder}")` : undefined,
+                                    backgroundPosition: 'center',
+                                    backgroundRepeat: 'no-repeat',
+                                    backgroundSize: usesProjectGridMechanism ? 'cover' : 'contain',
                                     position: 'relative',
                                     zIndex: 1,
                                   }}
-                                  loading="lazy"
+                                  loading="eager"
+                                  fetchPriority={Math.abs(thumbIndex - selectedThumbIndex) <= 4 ? 'high' : 'low'}
                                   decoding="async"
                                   draggable={false}
                                 />
@@ -3753,6 +3821,9 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
     sequence: 0,
   });
   const [isPageVisible, setIsPageVisible] = useState(() => !document.hidden);
+  const [hydratedProjectIndexes, setHydratedProjectIndexes] = useState<Record<number, true>>(
+    () => ({ 0: true, 1: true })
+  );
   const projectRefs = useRef<Array<HTMLAnchorElement | null>>([]);
   const viewportCandidatesRef = useRef(new Set<number>());
   const isBottomOverrideActiveRef = useRef(false);
@@ -3907,6 +3978,33 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
     };
   }, [resolveActiveProject]);
 
+  useEffect(() => {
+    const mediaObserver = new IntersectionObserver((entries) => {
+      const newlyVisibleIndexes = entries
+        .filter((entry) => entry.isIntersecting)
+        .map((entry) => Number((entry.target as HTMLElement).dataset.mobileProjectIndex))
+        .filter(Number.isInteger);
+
+      if (!newlyVisibleIndexes.length) return;
+      setHydratedProjectIndexes((currentIndexes) => {
+        const nextIndexes = { ...currentIndexes };
+        let changed = false;
+        newlyVisibleIndexes.forEach((projectIndex) => {
+          if (nextIndexes[projectIndex]) return;
+          nextIndexes[projectIndex] = true;
+          changed = true;
+        });
+        return changed ? nextIndexes : currentIndexes;
+      });
+    }, { rootMargin: '125% 0px', threshold: 0 });
+
+    projectRefs.current.forEach((projectElement) => {
+      if (projectElement) mediaObserver.observe(projectElement);
+    });
+
+    return () => mediaObserver.disconnect();
+  }, [projects.length]);
+
   return (
     <section className="mobile-home-projects" aria-label="Featured projects">
       <div className="mobile-home-projects-frame">
@@ -3919,6 +4017,7 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
           const projectClientLogo = getProjectClientLogo(project.id);
           const isActive = project.id === activeProjectId;
           const shouldRenderMedia = Math.abs(projectIndex - activeProjectIndex) <= 1;
+          const shouldHydrateMedia = shouldRenderMedia || Boolean(hydratedProjectIndexes[projectIndex]);
           const galleryImages = getMobileProjectGalleryImages(project);
           const activeImageIndex = (
             isActive &&
@@ -3960,12 +4059,12 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
             >
               <div className="mobile-home-project-media" aria-hidden="true">
                 <img
-                  src={desktopThumbnail}
-                  {...getResponsiveImageProps(desktopThumbnail)}
+                  src={shouldHydrateMedia ? desktopThumbnail : undefined}
+                  {...(shouldHydrateMedia ? getResponsiveImageProps(desktopThumbnail) : {})}
                   alt=""
                   className="mobile-home-project-media-element mobile-home-project-media-cover"
-                  loading="eager"
-                  fetchPriority="low"
+                  loading={shouldRenderMedia ? 'eager' : 'lazy'}
+                  fetchPriority={isActive ? 'high' : 'low'}
                   decoding="async"
                   draggable={false}
                 />
@@ -4017,9 +4116,11 @@ const MobileProjectThumbnails = ({ projects }: { projects: any[] }) => {
                       className={`mobile-home-project-client-logo-frame is-${projectClientLogo.brand}`}
                     >
                       <img
-                        src={projectClientLogo.src}
+                        src={shouldHydrateMedia ? projectClientLogo.src : undefined}
                         alt=""
                         className={`mobile-home-project-client-logo is-${projectClientLogo.brand}`}
+                        loading={isActive ? 'eager' : 'lazy'}
+                        decoding="async"
                         draggable={false}
                       />
                     </span>
@@ -4193,7 +4294,16 @@ function AnimatedRoutes() {
     mode: routeAnimationModeRef.current,
     prevScrollY: prevScrollY.current,
     exitingRouteKind: exitingRouteKindRef.current,
-    viewportHeight: typeof window !== 'undefined' ? window.innerHeight : 0,
+    viewportHeight: typeof window !== 'undefined'
+      ? (
+          isCompactTransitionViewport
+          && routeAnimationModeRef.current === 'project-one-to-detail'
+          && compactRouteCapturedViewportHeight > 0
+            ? compactRouteCapturedViewportHeight
+            : window.innerHeight
+        )
+      : 0,
+    compact: isCompactTransitionViewport,
   };
   const showProjectOneForwardBackground = !isCompactTransitionViewport
     && !isHome
@@ -4204,7 +4314,10 @@ function AnimatedRoutes() {
     : 'visible';
 
   const projectOneForwardPushY = '-100vh';
-  const projectOneForwardTransition = { duration: 1.8, ease: [0.16, 1, 0.3, 1] as const };
+  const projectOneForwardTransition = {
+    duration: compactRouteTransitionDurationMs / 1000,
+    ease: [0.16, 1, 0.3, 1] as const,
+  };
 
   const pageTransitionVariants: Variants = {
     enterHome: (custom: { mode: RouteAnimationMode; exitingRouteKind: 'home' | 'detail' }) => (
@@ -4228,7 +4341,7 @@ function AnimatedRoutes() {
             opacity: custom.exitingRouteKind === 'detail' ? 1 : 0,
         }
     ),
-    enterDetail: (custom: { mode: RouteAnimationMode }) => (
+    enterDetail: (custom: { mode: RouteAnimationMode; viewportHeight: number; compact: boolean }) => (
       custom.mode === 'project-one-to-detail'
         ? {
             zIndex: 20,
@@ -4236,9 +4349,9 @@ function AnimatedRoutes() {
             top: 0,
             left: 0,
             width: '100%',
-            height: '100vh',
+            height: custom.compact ? custom.viewportHeight : '100vh',
             overflowY: 'hidden',
-            y: '100vh',
+            y: custom.compact ? custom.viewportHeight : '100vh',
             opacity: 1,
           }
         : {
@@ -4261,7 +4374,7 @@ function AnimatedRoutes() {
       opacity: 1,
       transitionEnd: { position: 'relative' as const, top: 0 },
     },
-    centerDetail: (custom: { mode: RouteAnimationMode }) => (
+    centerDetail: (custom: { mode: RouteAnimationMode; viewportHeight: number; compact: boolean }) => (
       custom.mode === 'project-one-to-detail'
         ? {
             zIndex: 20,
@@ -4269,7 +4382,7 @@ function AnimatedRoutes() {
             top: 0,
             left: 0,
             width: '100%',
-            height: '100vh',
+            height: custom.compact ? custom.viewportHeight : '100vh',
             overflowY: 'hidden',
             y: 0,
             opacity: 1,
@@ -4458,7 +4571,14 @@ function AnimatedRoutes() {
                 forceRouteAnimationRefresh((value) => value + 1);
               }
             }}
-           style={{ width: '100%', backgroundColor: '#000' }}
+           style={{
+             width: '100%',
+             backgroundColor: '#000',
+             boxShadow: isCompactTransitionViewport
+               && routeAnimationModeRef.current === 'project-one-to-detail'
+               ? `0 -${routeAnimationCustom.viewportHeight}px 0 #000`
+               : undefined,
+           }}
            initial={isHome ? 'enterHome' : 'enterDetail'}
            animate={isHome ? 'centerHome' : 'centerDetail'}
            exit="exit"

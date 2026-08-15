@@ -6,7 +6,7 @@ const projectRoot = process.cwd();
 const sourceRoot = path.join(projectRoot, 'public', 'assets');
 const outputRoot = path.join(projectRoot, 'public', 'optimized', 'assets');
 const manifestPath = path.join(projectRoot, 'src', 'generated', 'media-manifest.json');
-const targetWidths = [320, 640, 960, 1440, 1920, 2560];
+const targetWidths = [160, 320, 640, 960, 1440, 1920, 2560];
 const supportedExtensions = new Set(['.jpg', '.jpeg', '.png']);
 const concurrency = 3;
 
@@ -30,6 +30,11 @@ const processImage = async (sourcePath) => {
   const relativePath = path.relative(sourceRoot, sourcePath);
   const metadata = await sharp(sourcePath).metadata();
   if (!metadata.width || !metadata.height) return;
+  const placeholderBuffer = await sharp(sourcePath)
+    .rotate()
+    .resize({ width: 20, withoutEnlargement: true, fit: 'inside' })
+    .webp({ quality: 28, effort: 4 })
+    .toBuffer();
 
   const widths = [...new Set([
     ...targetWidths.filter((width) => width < metadata.width),
@@ -53,7 +58,7 @@ const processImage = async (sourcePath) => {
       await sharp(sourcePath)
         .rotate()
         .resize({ width, withoutEnlargement: true, fit: 'inside' })
-        .webp({ quality: 84, effort: 4, smartSubsample: true })
+        .webp({ quality: width <= 160 ? 80 : 84, effort: 4, smartSubsample: true })
         .toFile(outputPath);
       generatedCount += 1;
     }
@@ -63,6 +68,7 @@ const processImage = async (sourcePath) => {
     metadata.width,
     metadata.height,
     widths,
+    `data:image/webp;base64,${placeholderBuffer.toString('base64')}`,
   ];
 };
 

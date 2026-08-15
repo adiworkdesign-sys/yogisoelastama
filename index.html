@@ -6,14 +6,21 @@
     <meta name="description" content="Yogi Soelastama - Portfolio & Digital Playground" />
     <title>Yogi Soelastama</title>
     <link rel="preload" href="/fonts/inter-latin-variable.woff2" as="font" type="font/woff2" crossorigin>
-    <link
-      rel="preload"
-      as="image"
-      href="/optimized/assets/video-thumbnails/leviathan-rcg.jpg.w1280.webp"
-      imagesrcset="/optimized/assets/video-thumbnails/leviathan-rcg.jpg.w320.webp 320w, /optimized/assets/video-thumbnails/leviathan-rcg.jpg.w640.webp 640w, /optimized/assets/video-thumbnails/leviathan-rcg.jpg.w960.webp 960w, /optimized/assets/video-thumbnails/leviathan-rcg.jpg.w1280.webp 1280w"
-      imagesizes="100vw"
-      fetchpriority="high"
-    >
+    <script>
+      if ((window.location.pathname.replace(/\/+$/, '') || '/') === '/') {
+        const heroPreload = document.createElement('link');
+        heroPreload.rel = 'preload';
+        heroPreload.as = 'image';
+        heroPreload.href = '/optimized/assets/video-thumbnails/leviathan-rcg.jpg.w1280.webp';
+        heroPreload.setAttribute(
+          'imagesrcset',
+          '/optimized/assets/video-thumbnails/leviathan-rcg.jpg.w320.webp 320w, /optimized/assets/video-thumbnails/leviathan-rcg.jpg.w640.webp 640w, /optimized/assets/video-thumbnails/leviathan-rcg.jpg.w960.webp 960w, /optimized/assets/video-thumbnails/leviathan-rcg.jpg.w1280.webp 1280w',
+        );
+        heroPreload.setAttribute('imagesizes', '100vw');
+        heroPreload.setAttribute('fetchpriority', 'high');
+        document.head.appendChild(heroPreload);
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

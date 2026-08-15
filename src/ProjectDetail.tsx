@@ -4,6 +4,7 @@ import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { ArrowLeft, ArrowRight, ArrowUp } from 'lucide-react';
 import projectsData from './projects.json';
 import {
+  getImagePlaceholder,
   getLightweightVideoSource,
   getResponsiveImageCandidate,
   getResponsiveImageProps,
@@ -221,7 +222,7 @@ const getProjectCoverImage = (project?: {
 
 const nextProjectCoverCache = new Map<string, Promise<void>>();
 const nextProjectsPool = projectsData.slice(1);
-const nextProjectMediaDwellMs = 1800;
+const nextProjectMediaDwellMs = 1300;
 const nextProjectMobileMediaDwellMs = 1500;
 const nextProjectMobileMediaTransitionSeconds = 0.42;
 const freezeNextProjectTransitionEvent = 'freezeNextProjectTransition';
@@ -363,9 +364,13 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
   const isMobileDetailLayout = useMobileDetailLayout();
   const nextProjects = useMemo(() => {
     const currentProjectIndex = nextProjectsPool.findIndex((item) => item.id === currentProjectId);
-    return Array.from({ length: 3 }, (_, offset) => (
-      nextProjectsPool[(currentProjectIndex + offset + 1) % nextProjectsPool.length]
-    ));
+    const orderedProjects = currentProjectIndex >= 0
+      ? [
+          ...nextProjectsPool.slice(currentProjectIndex + 1),
+          ...nextProjectsPool.slice(0, currentProjectIndex),
+        ]
+      : nextProjectsPool;
+    return orderedProjects.slice(0, 3);
   }, [currentProjectId]);
   const [activeProjectId, setActiveProjectId] = useState(nextProjects[0]?.id ?? '');
   const [engagedDesktopProjectId, setEngagedDesktopProjectId] = useState<string | null>(null);
@@ -996,7 +1001,9 @@ const NextProjectsSection = ({ currentProjectId }: { currentProjectId: string })
               />
             )}
           </AnimatePresence>
-          <div className="project-next-preview-scrim" aria-hidden="true" />
+          {activeProjectClientLogo && (
+            <div className="project-next-preview-scrim" aria-hidden="true" />
+          )}
           {activeProjectClientLogo && (
             <div className="project-next-preview-copy" aria-hidden={!shouldShowDesktopCoverIdentity}>
               <span className={`project-next-preview-client-logo-frame is-${activeProjectClientLogo.brand}`}>
@@ -1240,6 +1247,9 @@ const ProjectDetail = () => {
   const client = hasProjectText(project.client) ? project.client : '';
   const year = hasProjectText(project.year) ? project.year : '';
   const overview = hasProjectText(project.overview) ? project.overview : '';
+  const designGoal = hasProjectText((project as any).designGoal)
+    ? (project as any).designGoal
+    : '';
 
   return (
     <motion.div
@@ -1316,7 +1326,7 @@ const ProjectDetail = () => {
           );
         })}
 
-        {(project as any).designGoal && (
+        {designGoal && (
           <motion.section
             className="project-inline-note"
             initial={{ opacity: 0, y: 30 }}
@@ -1326,7 +1336,7 @@ const ProjectDetail = () => {
           >
             <div className="project-inline-note-grid">
               <span className="project-detail-info-label">Design Goal</span>
-              <p className="project-detail-info-value project-inline-note-value">{(project as any).designGoal}</p>
+              <p className="project-detail-info-value project-inline-note-value">{designGoal}</p>
             </div>
           </motion.section>
         )}
@@ -1409,9 +1419,11 @@ const ProjectDetail = () => {
                 {carouselImages.map((img, thumbIndex) => {
                   const thumbSrc = carouselThumbs[thumbIndex] || img;
                   const isSelected = carouselIndex === thumbIndex;
+                  const thumbnailPlaceholder = getImagePlaceholder(thumbSrc);
+                  const isPriorityThumbnail = Math.abs(thumbIndex - carouselIndex) <= DETAIL_THUMBNAIL_WINDOW_RADIUS;
                   const shouldRenderThumbnail =
                     Boolean((project as any).thumbFolder) ||
-                    Math.abs(thumbIndex - carouselIndex) <= DETAIL_THUMBNAIL_WINDOW_RADIUS;
+                    isPriorityThumbnail;
                   return (
                     <button
                       key={`${thumbSrc}-${thumbIndex}`}
@@ -1424,16 +1436,32 @@ const ProjectDetail = () => {
                     >
                       {!isVideoSrc(thumbSrc) && shouldRenderThumbnail ? (
                         <img
-                          src={thumbSrc}
-                          {...getResponsiveImageProps(thumbSrc, '80px')}
+                          src={getResponsiveImageCandidate(thumbSrc, 160)}
                           alt=""
-                          loading="lazy"
+                          loading={isPriorityThumbnail ? 'eager' : 'lazy'}
+                          fetchPriority={isSelected ? 'high' : 'auto'}
                           decoding="async"
                           draggable={false}
+                          style={{
+                            backgroundColor: '#050505',
+                            backgroundImage: thumbnailPlaceholder ? `url("${thumbnailPlaceholder}")` : undefined,
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
+                            backgroundSize: 'cover',
+                          }}
                         />
                       ) : !isVideoSrc(thumbSrc) ? (
-                        <span className="project-carousel-thumb-placeholder">
-                          {String(DETAIL_STATIC_IMAGE_COUNT + thumbIndex + 1).padStart(2, '0')}
+                        <span
+                          className="project-carousel-thumb-placeholder"
+                          style={{
+                            backgroundColor: '#050505',
+                            backgroundImage: thumbnailPlaceholder ? `url("${thumbnailPlaceholder}")` : undefined,
+                            backgroundPosition: 'center',
+                            backgroundRepeat: 'no-repeat',
+                            backgroundSize: 'cover',
+                          }}
+                        >
+                          {!thumbnailPlaceholder && String(DETAIL_STATIC_IMAGE_COUNT + thumbIndex + 1).padStart(2, '0')}
                         </span>
                       ) : (
                         <span className="project-carousel-video-thumb">Video</span>

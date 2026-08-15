@@ -1,6 +1,11 @@
 import manifestData from './generated/media-manifest.json';
 
-type MediaManifestEntry = [width: number, height: number, variants: number[]];
+type MediaManifestEntry = [
+  width: number,
+  height: number,
+  variants: number[],
+  placeholder?: string,
+];
 
 type ResponsiveImageProps = {
   srcSet?: string;
@@ -42,8 +47,11 @@ export const getMediaMetadata = (src?: string) => {
     width: entry[0],
     height: entry[1],
     variants: entry[2],
+    placeholder: entry[3],
   };
 };
+
+export const getImagePlaceholder = (src?: string) => getMediaMetadata(src)?.placeholder;
 
 export const getResponsiveImageProps = (
   src?: string,
